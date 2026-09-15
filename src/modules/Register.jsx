@@ -1,13 +1,16 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { startRegistration } from "../services/authService";
+import { Link, useNavigate } from "react-router-dom";
+import { completeRegistration, startRegistration } from "../services/authService";
 import "../styles/Register.css";
 
 export default function Register() {
   const [form, setForm] = useState({ name: "", email: "" });
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const sendLink = async (e) => {
     e.preventDefault();
@@ -35,17 +38,32 @@ export default function Register() {
     }
   };
 
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (!otpCode.trim()) return;
+    setError("");
+    setVerifying(true);
+    try {
+      await completeRegistration({ email: form.email, code: otpCode.trim() });
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   return (
     <section className="auth-page">
-      <form className="auth-form" onSubmit={sendLink} noValidate>
+      <div className="auth-form">
         <p className="eyebrow">Join BorrowHub</p>
         <h1>Create your account</h1>
 
         {!sent ? (
-          <>
+          <form onSubmit={sendLink} noValidate>
             <p className="form-intro">
               Create a borrowing account with your SRMIST email. We will send
-              you a verification link to confirm your address.
+              you a verification link & 6-digit code.
             </p>
 
             {error && <div className="alert alert-danger" role="alert">{error}</div>}
@@ -84,17 +102,45 @@ export default function Register() {
             >
               {sending ? "Sending link..." : "Send verification link"}
             </button>
-          </>
+          </form>
         ) : (
           <div className="auth-success">
             <span className="auth-success-icon" aria-hidden="true">📬</span>
             <h2 className="auth-success-title">Verify your email</h2>
             <p className="auth-success-body">
-              We sent a verification link to <strong>{form.email}</strong>.
-              Click the link in the email to create your BorrowHub account.
+              We sent a verification link & 6-digit code to <strong>{form.email}</strong>.
             </p>
+
+            {error && <div className="alert alert-danger w-100 mt-2" role="alert">{error}</div>}
+
+            {/* Direct OTP input */}
+            <form className="otp-verification-box" onSubmit={handleVerifyOtp}>
+              <p className="otp-title">Or enter the verification code:</p>
+              <div className="otp-input-group">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={8}
+                  placeholder="Enter 6-digit code"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  disabled={verifying}
+                  className="otp-input"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="btn btn-success otp-btn"
+                  disabled={verifying || !otpCode.trim()}
+                >
+                  {verifying ? "Verifying..." : "Verify & Sign up"}
+                </button>
+              </div>
+            </form>
+
             <p className="auth-success-hint">
-              The link expires shortly. Didn't receive it?{" "}
+              Didn't receive it?{" "}
               <button
                 type="button"
                 className="btn btn-link p-0 auth-resend-btn"
@@ -103,15 +149,13 @@ export default function Register() {
               >
                 {sending ? "Resending..." : "Resend link"}
               </button>{" "}
-              or check your spam folder.
+              or check spam.
             </p>
-
-            {error && <div className="alert alert-danger w-100 mt-2" role="alert">{error}</div>}
 
             <button
               type="button"
-              className="btn btn-outline-secondary w-100"
-              onClick={() => { setSent(false); setError(""); }}
+              className="btn btn-outline-secondary w-100 mt-2"
+              onClick={() => { setSent(false); setError(""); setOtpCode(""); }}
             >
               Edit details
             </button>
@@ -121,7 +165,7 @@ export default function Register() {
         <p className="auth-switch">
           Already have an account? <Link to="/login">Sign in</Link>
         </p>
-      </form>
+      </div>
     </section>
   );
 }

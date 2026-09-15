@@ -53,6 +53,14 @@ export default function UserDashboard() {
   const [showEmergency, setShowEmergency] = useState(false);
   const [emergency, setEmergency] = useState({ itemTitle: "", note: "" });
   const [locationEnabled, setLocationEnabled] = useState(false);
+  const [declinedAlerts, setDeclinedAlerts] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("borrowhub_declined_alerts") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [helpingAlert, setHelpingAlert] = useState(null);
 
   // ============================================================
   // Data fetching
@@ -99,6 +107,11 @@ export default function UserDashboard() {
   const availableItems = useMemo(
     () => items.filter((x) => x.available),
     [items]
+  );
+
+  const visibleAlerts = useMemo(
+    () => emergencyAlerts.filter((a) => !declinedAlerts.includes(a.id)),
+    [emergencyAlerts, declinedAlerts]
   );
 
   // Dynamic category list built from actual catalog data
@@ -244,6 +257,23 @@ export default function UserDashboard() {
     setDraft("");
   };
 
+  const handleDeclineAlert = (alertId) => {
+    const updated = [...declinedAlerts, alertId];
+    setDeclinedAlerts(updated);
+    try {
+      localStorage.setItem("borrowhub_declined_alerts", JSON.stringify(updated));
+    } catch {}
+    setNotice("Alert declined and removed from your nearby list.");
+  };
+
+  const handleAcceptAlert = (alertItem) => {
+    setHelpingAlert(alertItem);
+  };
+
+  const handleCloseHelping = () => {
+    setHelpingAlert(null);
+  };
+
   // ============================================================
   // Render
   // ============================================================
@@ -353,24 +383,69 @@ export default function UserDashboard() {
       </div>
 
       {/* ── Active emergency inbox ───────────────────────────── */}
-      {emergencyAlerts.length > 0 && (
+      {visibleAlerts.length > 0 && (
         <section className="ud-panel emergency-inbox fade-in">
-          <h2 className="emergency-inbox-title">Active nearby alerts</h2>
+          <div className="emergency-inbox-header">
+            <h2 className="emergency-inbox-title">🚨 Active nearby alerts</h2>
+            <span className="emergency-count-badge">{visibleAlerts.length} active</span>
+          </div>
           <div className="emergency-list">
-            {emergencyAlerts.map((a) => (
-              <div className="emergency-alert-row" key={a.id}>
-                <div className="emergency-alert-info">
-                  <strong>{a.itemTitle}</strong>
-                  <span>
-                    {a.requesterName} needs this nearby
-                    {a.note ? ` — ${a.note}` : ""}
-                  </span>
+            {visibleAlerts.map((a) => {
+              const isMine = a.requesterId && user?.id && a.requesterId === user.id;
+              return (
+                <div className="emergency-alert-row" key={a.id}>
+                  <div className="emergency-alert-info">
+                    <div className="emergency-alert-title-row">
+                      <strong>{a.itemTitle}</strong>
+                      {isMine ? (
+                        <span className="alert-badge-mine">Your request</span>
+                      ) : (
+                        <span className="alert-badge-nearby">Nearby request</span>
+                      )}
+                    </div>
+                    <span>
+                      {isMine ? "You requested this nearby" : `${a.requesterName} needs this nearby`}
+                      {a.note ? ` — "${a.note}"` : ""}
+                    </span>
+                  </div>
+
+                  <div className="emergency-alert-right">
+                    <span className="emergency-timer">
+                      ⏱ {Math.max(1, Math.ceil((a.expiresAt - Date.now()) / 60_000))} min left
+                    </span>
+                    <div className="emergency-actions">
+                      {!isMine ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-success"
+                            onClick={() => handleAcceptAlert(a)}
+                          >
+                            Accept (I can help)
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={() => handleDeclineAlert(a.id)}
+                          >
+                            Decline
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => handleDeclineAlert(a.id)}
+                          title="Dismiss from list"
+                        >
+                          Dismiss
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <span className="emergency-timer">
-                  {Math.max(1, Math.ceil((a.expiresAt - Date.now()) / 60_000))} min left
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -704,6 +779,58 @@ export default function UserDashboard() {
             </button>
           </form>
         </section>
+      )}
+
+      {/* ── Help with emergency request modal ────────────────── */}
+      {helpingAlert && (
+        <div className="emergency-modal-backdrop" onClick={handleCloseHelping}>
+          <div className="emergency-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="emergency-modal-header">
+              <span className="eyebrow">Emergency community assistance</span>
+              <h3>Lend "{helpingAlert.itemTitle}"</h3>
+            </div>
+            <div className="emergency-modal-body">
+              <p>
+                <strong>{helpingAlert.requesterName}</strong> urgently needs this nearby on campus.
+              </p>
+              {helpingAlert.note && (
+                <div className="emergency-note-box">
+                  <span className="note-label">Requester's note:</span>
+                  <p>"{helpingAlert.note}"</p>
+                </div>
+              )}
+              <div className="emergency-contact-box">
+                <p className="contact-label">How to coordinate with {helpingAlert.requesterName}:</p>
+                <div className="contact-actions">
+                  <a
+                    href={`mailto:${helpingAlert.requesterEmail || (helpingAlert.requesterName.includes('@') ? helpingAlert.requesterName : `${helpingAlert.requesterName}@srmist.edu.in`)}?subject=${encodeURIComponent(`BorrowHub: I have ${helpingAlert.itemTitle} for you!`)}&body=${encodeURIComponent(`Hi ${helpingAlert.requesterName},\n\nI saw your nearby request for "${helpingAlert.itemTitle}" on BorrowHub and I can help!\n\nWhere on campus can we meet to hand it over?\n\nBest,\n${user?.name || "Fellow SRMIST Student"}`)}`}
+                    className="btn btn-primary w-100"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    ✉️ Email {helpingAlert.requesterName} to Coordinate
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div className="emergency-modal-footer">
+              <button
+                type="button"
+                className="btn btn-success"
+                onClick={() => {
+                  handleDeclineAlert(helpingAlert.id);
+                  handleCloseHelping();
+                  setNotice(`Thank you for helping ${helpingAlert.requesterName}!`);
+                }}
+              >
+                Done / I've Contacted Them
+              </button>
+              <button type="button" className="btn btn-outline-secondary" onClick={handleCloseHelping}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

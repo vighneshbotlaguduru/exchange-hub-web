@@ -86,34 +86,174 @@
 }
 
 /* ── Emergency inbox ────────────────────────────────── */
+.emergency-inbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
 .emergency-inbox-title {
-  margin: 0 0 0.9rem;
-  font-size: 1rem;
+  margin: 0;
+  font-size: 1.05rem;
   font-weight: 750;
+  color: #991b1b;
+}
+.emergency-count-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 0.2rem 0.6rem;
+  border-radius: 99px;
+  border: 1px solid #fecaca;
 }
 .emergency-list { display: flex; flex-direction: column; }
 .emergency-alert-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  padding: 0.8rem 0;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.9rem 0;
   border-top: 1px solid var(--line);
 }
 .emergency-alert-row:first-child { border-top: none; }
-.emergency-alert-info strong {
-  display: block;
-  margin-bottom: 0.15rem;
-  font-size: 0.94rem;
+.emergency-alert-info { flex: 1; min-width: 0; }
+.emergency-alert-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+  flex-wrap: wrap;
 }
-.emergency-alert-info span { color: var(--muted); font-size: 0.84rem; }
+.emergency-alert-info strong {
+  font-size: 1rem;
+  color: var(--ink);
+}
+.alert-badge-mine {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+}
+.alert-badge-nearby {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #fef2f2;
+  color: #b91c1c;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #fecaca;
+}
+.emergency-alert-info span { color: var(--muted); font-size: 0.85rem; }
+
+.emergency-alert-right {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-shrink: 0;
+}
 .emergency-timer {
   flex-shrink: 0;
   color: #be123c;
-  font-size: 0.79rem;
+  font-size: 0.82rem;
   font-weight: 700;
   white-space: nowrap;
-  padding-top: 2px;
+}
+.emergency-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ── Emergency Help Modal ───────────────────────────── */
+.emergency-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.emergency-modal {
+  background: white;
+  border-radius: 12px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  animation: modalPop 0.18s ease-out;
+}
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.emergency-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  background: #fef2f2;
+}
+.emergency-modal-header .eyebrow {
+  color: #b91c1c;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+.emergency-modal-header h3 {
+  margin: 0;
+  font-size: 1.18rem;
+  color: #991b1b;
+}
+.emergency-modal-body {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.emergency-note-box {
+  background: #f8fafc;
+  border-left: 3px solid var(--brand);
+  padding: 0.65rem 0.85rem;
+  border-radius: 0 6px 6px 0;
+}
+.emergency-note-box .note-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.15rem;
+}
+.emergency-note-box p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink);
+  font-style: italic;
+}
+.emergency-contact-box {
+  margin-top: 0.3rem;
+}
+.emergency-contact-box .contact-label {
+  font-weight: 650;
+  font-size: 0.86rem;
+  margin-bottom: 0.5rem;
+  color: #1e293b;
+}
+.emergency-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--line);
+  background: #f8fafc;
 }
 
 /* ── Shared form field ──────────────────────────────── */

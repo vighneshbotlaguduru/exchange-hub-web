@@ -53,3 +53,45 @@
   line-height: inherit !important;
 }
 .auth-resend-btn:hover { color: var(--brand-dark) !important; }
+
+/* ── OTP Direct Input Form ──────────────────────────── */
+.otp-verification-box {
+  width: 100%;
+  margin: 0.75rem 0 0.5rem;
+  padding: 1.1rem;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  text-align: left;
+}
+.otp-title {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+}
+.otp-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+.otp-input {
+  flex: 1;
+  padding: 0.62rem 0.75rem !important;
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.15em;
+  text-align: center;
+  border: 1.5px solid #94a3b8 !important;
+  border-radius: 6px !important;
+  background: white !important;
+}
+.otp-input:focus {
+  border-color: var(--brand) !important;
+  box-shadow: 0 0 0 3px rgba(11, 107, 88, 0.15) !important;
+}
+.otp-btn {
+  flex-shrink: 0;
+  font-weight: 650;
+  padding: 0.6rem 1.1rem !important;
+  white-space: nowrap;
+}
