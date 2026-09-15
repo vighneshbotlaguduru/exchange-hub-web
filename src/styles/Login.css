@@ -1,0 +1,55 @@
+.auth-page { min-height: calc(100vh - 68px); display: grid; place-items: center; padding: 2.5rem 1rem; }
+.auth-form { width: min(100%, 430px); padding: 2.15rem; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 14px 30px rgba(23, 33, 31, .06); border-radius: 6px; }
+.auth-form h1 { margin-bottom: .35rem; font-size: 2rem; }
+.form-intro { margin-bottom: 1.7rem; color: var(--muted); }
+.auth-form label { display: grid; gap: .42rem; margin-bottom: 1.1rem; color: #36413d; font-size: .9rem; font-weight: 650; }
+.auth-form input { width: 100%; padding: .68rem .75rem; border: 1px solid #bdc9c4; border-radius: 4px; outline: none; background: white; font: inherit; }
+.auth-form input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(11, 107, 88, .12); }
+.auth-switch { margin: 1.2rem 0 .7rem; color: var(--muted); font-size: .9rem; text-align: center; }
+.admin-link { display: block; color: var(--muted); font-size: .82rem; text-align: center; }
+.code-hint { margin: -0.5rem 0 1rem; color: var(--muted); font-size: .85rem; }
+
+/* Button disabled state */
+.auth-form button:disabled { opacity: 0.72; cursor: not-allowed; }
+
+/* ── Auth success / magic-link sent state ─────────────── */
+.auth-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.7rem;
+  padding: 1rem 0 0.75rem;
+  width: 100%;
+}
+.auth-success-icon {
+  font-size: 3rem;
+  line-height: 1;
+}
+.auth-success-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 750;
+  color: var(--ink);
+}
+.auth-success-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  max-width: 340px;
+}
+.auth-success-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+.auth-resend-btn {
+  font-size: 0.84rem !important;
+  color: var(--brand) !important;
+  text-decoration: underline;
+  vertical-align: baseline;
+  line-height: inherit !important;
+}
+.auth-resend-btn:hover { color: var(--brand-dark) !important; }

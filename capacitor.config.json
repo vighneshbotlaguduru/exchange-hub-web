@@ -1,0 +1,6 @@
+{
+  "appId": "com.borrowhub.app",
+  "appName": "BorrowHub",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" }
+}

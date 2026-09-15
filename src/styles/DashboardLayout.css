@@ -1,0 +1,12 @@
+.dashboard-shell { min-height: 100vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+.dashboard-sidebar { display: flex; flex-direction: column; gap: .4rem; padding: 1.5rem; background: var(--ink); color: white; }
+.dashboard-sidebar .brand { margin-bottom: 2.3rem; color: white; }
+.dashboard-sidebar .brand span { color: #8ed7c4; }
+.sidebar-label { margin: 0 0 .45rem; color: #9eb3ac; font-size: .7rem; font-weight: 700; letter-spacing: 0; text-transform: uppercase; }
+.dashboard-sidebar a, .sidebar-logout { padding: .55rem .65rem; color: #d8e4df; border: 0; background: transparent; text-align: left; font-size: .9rem; }
+.dashboard-sidebar a:hover, .sidebar-logout:hover { color: white; background: rgba(255,255,255,.09); }
+.sidebar-logout { margin-top: auto; cursor: pointer; }
+.dashboard-main { max-width: 1180px; width: 100%; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+.account-bar { display: flex; flex-direction: column; align-items: flex-end; margin-bottom: 2.5rem; color: var(--ink); font-size: .88rem; font-weight: 650; }
+.account-bar small { color: var(--muted); font-weight: 400; }
+@media (max-width: 640px) { .dashboard-shell { grid-template-columns: 1fr; } .dashboard-sidebar { min-height: auto; flex-direction: row; align-items: center; padding: 1rem; } .dashboard-sidebar .brand { margin: 0 auto 0 0; } .sidebar-label, .dashboard-sidebar a { display: none; } .sidebar-logout { margin: 0; } .dashboard-main { padding: 1.5rem 1rem; } .account-bar { margin-bottom: 1.7rem; } }

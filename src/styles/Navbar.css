@@ -1,0 +1,7 @@
+.site-header { background: var(--surface); border-bottom: 1px solid var(--line); }
+.site-nav { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.brand { color: var(--ink); font-size: 1.15rem; font-weight: 800; letter-spacing: 0; }
+.brand span { color: var(--brand); }
+.nav-links { display: flex; align-items: center; gap: 1.1rem; font-size: .92rem; font-weight: 600; }
+.nav-links a:not(.btn) { color: var(--muted); }
+.nav-links a.active { color: var(--ink); }
