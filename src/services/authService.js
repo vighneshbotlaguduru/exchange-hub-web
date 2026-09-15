@@ -7,7 +7,15 @@ const message = (error) => { throw new Error(error?.message || "Something went w
 export async function startRegistration({ name, email }) {
   if (!name.trim()) throw new Error("Please enter your name.");
   if (!srmistEmailPattern.test(email.trim())) throw new Error("Please use your SRMIST email address ending in @srmist.edu.in.");
-  const { error } = await requireSupabase().auth.signInWithOtp({ email: email.trim(), options: { data: { full_name: name.trim() }, shouldCreateUser: true } });
+  const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+  const { error } = await requireSupabase().auth.signInWithOtp({
+    email: email.trim(),
+    options: {
+      data: { full_name: name.trim() },
+      shouldCreateUser: true,
+      emailRedirectTo: redirectTo,
+    },
+  });
   if (error) message(error);
 }
 
@@ -15,7 +23,14 @@ export async function completeRegistration({ email, code }) { return verify(emai
 
 export async function startLogin({ email }) {
   if (!srmistEmailPattern.test(email.trim())) throw new Error("Please use your SRMIST email address.");
-  const { error } = await requireSupabase().auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
+  const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+  const { error } = await requireSupabase().auth.signInWithOtp({
+    email: email.trim(),
+    options: {
+      shouldCreateUser: false,
+      emailRedirectTo: redirectTo,
+    },
+  });
   if (error) message(error);
 }
 
