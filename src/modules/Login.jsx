@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { completeLogin, startLogin } from "../services/authService";
+import { startLogin } from "../services/authService";
 import { useAuth } from "./useAuth";
 import "../styles/Login.css";
 
@@ -9,8 +9,6 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
-  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
@@ -32,7 +30,7 @@ export default function Login() {
       if (errorCode || errorDesc) {
         setError(
           errorDesc?.replace(/\+/g, " ") ||
-            "This sign-in link has expired or was already used. Please enter the 6-digit verification code below or request a new link."
+            "This sign-in link has expired or was already used. Please request a new link."
         );
         window.history.replaceState(null, "", window.location.pathname);
       }
@@ -62,21 +60,6 @@ export default function Login() {
       setError(err.message);
     } finally {
       setSending(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    if (!otpCode.trim()) return;
-    setError("");
-    setVerifying(true);
-    try {
-      await completeLogin({ email, code: otpCode.trim() });
-      navigate(_from, { replace: true });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setVerifying(false);
     }
   };
 
@@ -123,37 +106,11 @@ export default function Login() {
             <span className="auth-success-icon" aria-hidden="true">📬</span>
             <h2 className="auth-success-title">Check your email</h2>
             <p className="auth-success-body">
-              We sent a sign-in link to <strong>{email}</strong>. Open that link
-              on this device to sign in.
+              We sent a secure sign-in link to <strong>{email}</strong>. Open that link
+              on your phone or browser to sign in instantly.
             </p>
 
             {error && <div className="alert alert-danger w-100 mt-2" role="alert">{error}</div>}
-
-            {/* Optional OTP fallback when the configured email template includes a code. */}
-            <form className="otp-verification-box" onSubmit={handleVerifyOtp}>
-              <p className="otp-title">Can&apos;t open the link? Enter the email code instead:</p>
-              <div className="otp-input-group">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={8}
-                  placeholder="Enter 6-digit code"
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                  disabled={verifying}
-                  className="otp-input"
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  className="btn btn-success otp-btn"
-                  disabled={verifying || !otpCode.trim()}
-                >
-                  {verifying ? "Verifying..." : "Verify & Sign in"}
-                </button>
-              </div>
-            </form>
 
             <p className="auth-success-hint">
               Didn't receive it?{" "}
@@ -171,7 +128,7 @@ export default function Login() {
             <button
               type="button"
               className="btn btn-outline-secondary w-100 mt-2"
-              onClick={() => { setSent(false); setError(""); setOtpCode(""); }}
+              onClick={() => { setSent(false); setError(""); }}
             >
               Use a different email
             </button>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Geolocation } from "@capacitor/geolocation";
 import {
   createEmergencyRequest,
   emergencyRadiusKm,
@@ -146,12 +147,36 @@ export default function UserDashboard() {
   // Geolocation helper
   // ============================================================
 
-  const getPosition = (onSuccess, onFail) =>
-    navigator.geolocation?.getCurrentPosition(onSuccess, onFail, {
-      enableHighAccuracy: true,
-      maximumAge: 60_000,
-      timeout: 10_000,
-    });
+  const getPosition = async (onSuccess, onFail) => {
+    try {
+      // First try native Capacitor Geolocation
+      const perm = await Geolocation.checkPermissions();
+      if (perm.location !== "granted") {
+        const requested = await Geolocation.requestPermissions();
+        if (requested.location !== "granted") {
+          if (onFail) onFail(new Error("Location permission denied."));
+          return;
+        }
+      }
+      const pos = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10_000,
+        maximumAge: 60_000,
+      });
+      onSuccess(pos);
+    } catch {
+      // Fallback to browser geolocation
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(onSuccess, onFail, {
+          enableHighAccuracy: true,
+          maximumAge: 60_000,
+          timeout: 10_000,
+        });
+      } else {
+        if (onFail) onFail(new Error("Geolocation is not supported on this device."));
+      }
+    }
+  };
 
   // ============================================================
   // Event handlers

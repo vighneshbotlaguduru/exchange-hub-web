@@ -5,7 +5,6 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "./styles/variables.css";
 import "./styles/global.css";
 import "./styles/android.css";
-import "./styles/android.css";
 import App from "./App.jsx";
 
 if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
