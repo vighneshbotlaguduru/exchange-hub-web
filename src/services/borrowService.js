@@ -40,30 +40,55 @@ export async function getEmergencyRequests() {
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false });
   fail(error);
-  return data.map((x) => ({
-    id: x.id,
-    requesterId: x.requester_id,
-    itemTitle: x.item_title,
-    note: x.note,
-    latitude: x.latitude,
-    longitude: x.longitude,
-    requesterName: x.profiles?.full_name || "Community member",
-    requesterEmail: x.profiles?.email || (x.profiles?.full_name ? `${x.profiles.full_name}@srmist.edu.in` : ""),
-    expiresAt: new Date(x.expires_at).getTime()
-  }));
+  return data.map((x) => {
+    let rawNote = x.note || "";
+    let phone = "";
+    let email = x.profiles?.email || (x.profiles?.full_name ? `${x.profiles.full_name}@srmist.edu.in` : "");
+
+    const telMatch = rawNote.match(/\[TEL:([^\]]+)\]/);
+    if (telMatch) {
+      phone = telMatch[1].trim();
+      rawNote = rawNote.replace(/\[TEL:[^\]]+\]\s*/, "");
+    }
+    const mailMatch = rawNote.match(/\[MAIL:([^\]]+)\]/);
+    if (mailMatch) {
+      email = mailMatch[1].trim();
+      rawNote = rawNote.replace(/\[MAIL:[^\]]+\]\s*/, "");
+    }
+
+    return {
+      id: x.id,
+      requesterId: x.requester_id,
+      itemTitle: x.item_title,
+      note: rawNote.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      latitude: x.latitude,
+      longitude: x.longitude,
+      requesterName: x.profiles?.full_name || "Community member",
+      requesterEmail: email.trim(),
+      expiresAt: new Date(x.expires_at).getTime()
+    };
+  });
 }
-export async function createEmergencyRequest({ itemTitle, note, location }) {
+export async function createEmergencyRequest({ itemTitle, note, phone, email, location }) {
   const sb = requireSupabase();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) throw new Error("Please log in first.");
   const lat = location?.coords?.latitude;
   const lng = location?.coords?.longitude;
 
+  let combinedNote = "";
+  if (phone) combinedNote += `[TEL:${phone.trim()}] `;
+  if (email) combinedNote += `[MAIL:${email.trim()}] `;
+  if (note) combinedNote += note.trim();
+  combinedNote = combinedNote.trim().slice(0, 500);
+
   // 1. Try direct RPC create_emergency_request
   try {
     const { data, error } = await sb.rpc("create_emergency_request", {
       p_item_title: itemTitle.trim(),
-      p_note: (note || "").trim(),
+      p_note: combinedNote,
       p_latitude: lat,
       p_longitude: lng
     });
@@ -79,7 +104,7 @@ export async function createEmergencyRequest({ itemTitle, note, location }) {
     .insert({
       requester_id: user.id,
       item_title: itemTitle.trim(),
-      note: (note || "").trim(),
+      note: combinedNote,
       latitude: lat,
       longitude: lng,
       expires_at: expiresAt
@@ -89,7 +114,7 @@ export async function createEmergencyRequest({ itemTitle, note, location }) {
 
   if (insertError) {
     const { data: fnData, error: fnError } = await sb.functions.invoke("create-emergency-request", {
-      body: { itemTitle: itemTitle.trim(), note: (note || "").trim(), latitude: lat, longitude: lng }
+      body: { itemTitle: itemTitle.trim(), note: combinedNote, latitude: lat, longitude: lng }
     });
     fail(fnError);
     return fnData;

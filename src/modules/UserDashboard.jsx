@@ -74,7 +74,7 @@ export default function UserDashboard() {
 
   // ---------- Emergency ----------
   const [showEmergency, setShowEmergency] = useState(false);
-  const [emergency, setEmergency] = useState({ itemTitle: "", note: "" });
+  const [emergency, setEmergency] = useState({ itemTitle: "", phone: "", email: "", note: "" });
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [declinedAlerts, setDeclinedAlerts] = useState(() => {
     try {
@@ -84,6 +84,12 @@ export default function UserDashboard() {
     }
   });
   const [helpingAlert, setHelpingAlert] = useState(null);
+
+  useEffect(() => {
+    if (user?.email && !emergency.email) {
+      setEmergency((prev) => ({ ...prev, email: user.email }));
+    }
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const triggerAlertNotification = (itemTitle, note, requesterId) => {
     if (requesterId && user?.id && requesterId === user.id) return;
@@ -328,8 +334,11 @@ export default function UserDashboard() {
       async (position) => {
         try {
           const itemTitle = emergency.itemTitle.trim();
-          const note = emergency.note.trim();
-          const data = await createEmergencyRequest({ itemTitle, note, location: position });
+          const phone = (emergency.phone || "").trim();
+          const email = (emergency.email || "").trim();
+          const note = (emergency.note || "").trim();
+
+          const data = await createEmergencyRequest({ itemTitle, note, phone, email, location: position });
           
           // Broadcast to all active users on the realtime channel for immediate alert
           if (supabase) {
@@ -341,6 +350,8 @@ export default function UserDashboard() {
                   id: data.requestId,
                   itemTitle,
                   note,
+                  phone,
+                  email,
                   requesterId: user?.id,
                   requesterName: user?.name,
                 },
@@ -352,7 +363,7 @@ export default function UserDashboard() {
 
           setLocationEnabled(true);
           setShowEmergency(false);
-          setEmergency({ itemTitle: "", note: "" });
+          setEmergency({ itemTitle: "", phone: "", email: user?.email || "", note: "" });
           await refresh();
           setNotice(
             `Emergency alert sent to ${data.recipientCount} nearby member${data.recipientCount !== 1 ? "s" : ""}.`
@@ -430,6 +441,20 @@ export default function UserDashboard() {
 
   const handleAcceptAlert = (alertItem) => {
     setHelpingAlert(alertItem);
+
+    const isMobileOrApp = Capacitor.isNativePlatform() || /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+    const cleanPhone = (alertItem.phone || "").replace(/[^\d+]/g, "");
+    const targetEmail = alertItem.email || alertItem.requesterEmail || (alertItem.requesterName?.includes("@") ? alertItem.requesterName : `${alertItem.requesterName || "student"}@srmist.edu.in`);
+
+    if (isMobileOrApp && cleanPhone) {
+      // In APK or mobile phone -> immediately redirect to native phone dialer
+      window.location.href = `tel:${cleanPhone}`;
+    } else if (!isMobileOrApp && targetEmail) {
+      // On laptop / desktop -> immediately redirect to mail client
+      const subject = encodeURIComponent(`BorrowHub Emergency: I can lend you "${alertItem.itemTitle}"`);
+      const body = encodeURIComponent(`Hi ${alertItem.requesterName},\n\nI saw your nearby emergency request for "${alertItem.itemTitle}" on BorrowHub and I can help!\n\nWhere on campus can we meet to hand it over?\n\nBest,\n${user?.name || "Fellow SRMIST Student"}`);
+      window.location.href = `mailto:${targetEmail}?subject=${subject}&body=${body}`;
+    }
   };
 
   const handleCloseHelping = () => {
@@ -494,7 +519,7 @@ export default function UserDashboard() {
             <h2>Need something urgently?</h2>
             <p>
               We will alert location-enabled members within {emergencyRadiusKm} km.
-              Enable your location first to send and receive alerts.
+              Provide your phone and email so responders can immediately call (on APK) or email (on Laptop).
             </p>
           </div>
           <form className="emergency-form" onSubmit={handleEmergencySend}>
@@ -506,21 +531,55 @@ export default function UserDashboard() {
                 id="em-item"
                 value={emergency.itemTitle}
                 onChange={(e) => setEmergency({ ...emergency, itemTitle: e.target.value })}
-                placeholder="e.g. USB-C charger"
+                placeholder="e.g. Scientific Calculator, USB-C Charger, Lab Coat"
                 required
               />
             </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.85rem" }}>
+              <div className="form-field">
+                <label htmlFor="em-phone">
+                  Mobile number <span className="req-star">*</span>
+                  <span style={{ fontSize: "0.72rem", color: "#059669", fontWeight: "600" }}>(Direct call on APK/phone)</span>
+                </label>
+                <input
+                  id="em-phone"
+                  type="tel"
+                  value={emergency.phone}
+                  onChange={(e) => setEmergency({ ...emergency, phone: e.target.value })}
+                  placeholder="e.g. 9876543210"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="em-email">
+                  Contact email <span className="req-star">*</span>
+                  <span style={{ fontSize: "0.72rem", color: "#2563eb", fontWeight: "600" }}>(Direct mail on laptop)</span>
+                </label>
+                <input
+                  id="em-email"
+                  type="email"
+                  value={emergency.email}
+                  onChange={(e) => setEmergency({ ...emergency, email: e.target.value })}
+                  placeholder="e.g. yourname@srmist.edu.in"
+                  required
+                />
+              </div>
+            </div>
+
             <div className="form-field">
-              <label htmlFor="em-note">Additional details</label>
+              <label htmlFor="em-note">Campus location & details</label>
               <input
                 id="em-note"
                 value={emergency.note}
                 onChange={(e) => setEmergency({ ...emergency, note: e.target.value })}
-                placeholder="Any helpful context (optional)"
+                placeholder="e.g. Tech Park 4th floor, Room 402, exam in 20 mins"
               />
             </div>
+
             <button className="btn emergency-button" type="submit">
-              Send nearby alert
+              🚨 Broadcast emergency alert
             </button>
           </form>
         </section>
@@ -569,6 +628,20 @@ export default function UserDashboard() {
                       {isMine ? "You requested this nearby" : `${a.requesterName} needs this nearby`}
                       {a.note ? ` — "${a.note}"` : ""}
                     </span>
+                    {(a.phone || a.email) && (
+                      <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
+                        {a.phone && (
+                          <span style={{ fontSize: "0.74rem", background: "#ecfdf5", color: "#065f46", padding: "0.15rem 0.45rem", borderRadius: "4px", fontWeight: "600" }}>
+                            📞 {a.phone}
+                          </span>
+                        )}
+                        {a.email && (
+                          <span style={{ fontSize: "0.74rem", background: "#eff6ff", color: "#1e40af", padding: "0.15rem 0.45rem", borderRadius: "4px", fontWeight: "600" }}>
+                            ✉️ {a.email}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="emergency-alert-right">
@@ -583,7 +656,7 @@ export default function UserDashboard() {
                             className="btn btn-sm btn-success"
                             onClick={() => handleAcceptAlert(a)}
                           >
-                            Accept (I can help)
+                            Accept & Connect
                           </button>
                           <button
                             type="button"
@@ -957,20 +1030,54 @@ export default function UserDashboard() {
               </p>
               {helpingAlert.note && (
                 <div className="emergency-note-box">
-                  <span className="note-label">Requester's note:</span>
+                  <span className="note-label">Campus Location & Note:</span>
                   <p>"{helpingAlert.note}"</p>
                 </div>
               )}
               <div className="emergency-contact-box">
-                <p className="contact-label">How to coordinate with {helpingAlert.requesterName}:</p>
-                <div className="contact-actions">
+                <p className="contact-label">Contact {helpingAlert.requesterName} directly:</p>
+                <div className="contact-actions" style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                  {helpingAlert.phone && (
+                    <a
+                      href={`tel:${helpingAlert.phone.replace(/[^\d+]/g, "")}`}
+                      className="btn btn-success w-100"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "0.55rem",
+                        fontWeight: "700",
+                        padding: "0.75rem 1rem",
+                        textDecoration: "none",
+                        background: "#059669",
+                        color: "#ffffff",
+                        borderRadius: "8px",
+                      }}
+                    >
+                      <span style={{ fontSize: "1.1rem" }}>📞</span>
+                      <span>Call {helpingAlert.phone} (Phone Dialer)</span>
+                    </a>
+                  )}
                   <a
-                    href={`mailto:${helpingAlert.requesterEmail || (helpingAlert.requesterName.includes('@') ? helpingAlert.requesterName : `${helpingAlert.requesterName}@srmist.edu.in`)}?subject=${encodeURIComponent(`BorrowHub: I have ${helpingAlert.itemTitle} for you!`)}&body=${encodeURIComponent(`Hi ${helpingAlert.requesterName},\n\nI saw your nearby request for "${helpingAlert.itemTitle}" on BorrowHub and I can help!\n\nWhere on campus can we meet to hand it over?\n\nBest,\n${user?.name || "Fellow SRMIST Student"}`)}`}
+                    href={`mailto:${helpingAlert.email || helpingAlert.requesterEmail || (helpingAlert.requesterName.includes('@') ? helpingAlert.requesterName : `${helpingAlert.requesterName}@srmist.edu.in`)}?subject=${encodeURIComponent(`BorrowHub: I have ${helpingAlert.itemTitle} for you!`)}&body=${encodeURIComponent(`Hi ${helpingAlert.requesterName},\n\nI saw your nearby emergency alert for "${helpingAlert.itemTitle}" on BorrowHub and I can lend it to you!\n\nWhere on campus can we meet to hand it over?\n\nBest,\n${user?.name || "Fellow SRMIST Student"}`)}`}
                     className="btn btn-primary w-100"
                     target="_blank"
                     rel="noreferrer"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.55rem",
+                      fontWeight: "700",
+                      padding: "0.75rem 1rem",
+                      textDecoration: "none",
+                      background: "#2563eb",
+                      color: "#ffffff",
+                      borderRadius: "8px",
+                    }}
                   >
-                    ✉️ Email {helpingAlert.requesterName} to Coordinate
+                    <span style={{ fontSize: "1.1rem" }}>✉️</span>
+                    <span>Email {helpingAlert.email || helpingAlert.requesterEmail || `${helpingAlert.requesterName}@srmist.edu.in`}</span>
                   </a>
                 </div>
               </div>
@@ -985,7 +1092,7 @@ export default function UserDashboard() {
                   setNotice(`Thank you for helping ${helpingAlert.requesterName}!`);
                 }}
               >
-                Done / I've Contacted Them
+                ✓ I've Contacted Them
               </button>
               <button type="button" className="btn btn-outline-secondary" onClick={handleCloseHelping}>
                 Close
