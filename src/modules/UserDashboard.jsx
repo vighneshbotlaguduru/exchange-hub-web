@@ -7,7 +7,6 @@ import {
   getMessages,
   getMyListings,
   getMyRequest,
-  getRequests,
   requestBorrow,
   saveMemberLocation,
   sendMessage,
@@ -28,7 +27,6 @@ export default function UserDashboard() {
   // ---------- Data state ----------
   const [items, setItems] = useState([]);
   const [myListings, setMyListings] = useState([]);
-  const [requests, setRequests] = useState([]);
   const [emergencyAlerts, setEmergencyAlerts] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
 
@@ -68,15 +66,13 @@ export default function UserDashboard() {
 
   const refresh = async () => {
     try {
-      const [fetchedItems, fetchedRequests, fetchedAlerts, fetchedMine] =
+      const [fetchedItems, fetchedAlerts, fetchedMine] =
         await Promise.all([
           getItems({ approvedOnly: true }),
-          getRequests(),
           getEmergencyRequests(),
           getMyListings(),
         ]);
       setItems(fetchedItems);
-      setRequests(fetchedRequests);
       setEmergencyAlerts(fetchedAlerts);
       setMyListings(fetchedMine);
     } catch (e) {

@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { completeLogin, startLogin } from "../services/authService";
+import { useAuth } from "./useAuth";
 import "../styles/Login.css";
 
 export default function Login() {
+  const { isAuthenticated, isAdmin } = useAuth();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
@@ -12,6 +14,30 @@ export default function Login() {
   const [error, setError] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Preserve the intended destination so the user can navigate there after clicking the link
+  const _from = location.state?.from?.pathname || (isAdmin ? "/admin/dashboard" : "/dashboard");
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(_from, { replace: true });
+    }
+  }, [isAuthenticated, _from, navigate]);
+
+  useEffect(() => {
+    if (window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const errorDesc = hashParams.get("error_description");
+      const errorCode = hashParams.get("error_code");
+      if (errorCode || errorDesc) {
+        setError(
+          errorDesc?.replace(/\+/g, " ") ||
+            "This sign-in link has expired or was already used. Please enter the 6-digit verification code below or request a new link."
+        );
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+  }, []);
 
   const sendLink = async (e) => {
     e.preventDefault();
@@ -54,9 +80,6 @@ export default function Login() {
     }
   };
 
-  // Preserve the intended destination so the user can navigate there after clicking the link
-  const _from = location.state?.from?.pathname || "/dashboard";
-
   return (
     <section className="auth-page">
       <div className="auth-form">
@@ -67,7 +90,7 @@ export default function Login() {
           <form onSubmit={sendLink} noValidate>
             <p className="form-intro">
               Enter your SRMIST email address and we will send you a secure
-              sign-in link & verification code.
+              sign-in link. Open the link in the email to continue.
             </p>
 
             {error && <div className="alert alert-danger" role="alert">{error}</div>}
@@ -100,14 +123,15 @@ export default function Login() {
             <span className="auth-success-icon" aria-hidden="true">📬</span>
             <h2 className="auth-success-title">Check your email</h2>
             <p className="auth-success-body">
-              We sent a sign-in link & 6-digit code to <strong>{email}</strong>.
+              We sent a sign-in link to <strong>{email}</strong>. Open that link
+              on this device to sign in.
             </p>
 
             {error && <div className="alert alert-danger w-100 mt-2" role="alert">{error}</div>}
 
-            {/* Direct OTP input for mobile users where link doesn't redirect */}
+            {/* Optional OTP fallback when the configured email template includes a code. */}
             <form className="otp-verification-box" onSubmit={handleVerifyOtp}>
-              <p className="otp-title">Or enter the verification code:</p>
+              <p className="otp-title">Can&apos;t open the link? Enter the email code instead:</p>
               <div className="otp-input-group">
                 <input
                   type="text"
@@ -139,7 +163,7 @@ export default function Login() {
                 onClick={resend}
                 disabled={sending}
               >
-                {sending ? "Resending..." : "Resend code"}
+                {sending ? "Resending..." : "Resend sign-in link"}
               </button>{" "}
               or check spam.
             </p>

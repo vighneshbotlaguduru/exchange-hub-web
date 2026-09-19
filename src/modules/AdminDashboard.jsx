@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addItem, getIncomingRequests, getItems, getMessages, removeItem, sendMessage, updateItem } from "../services/borrowService";
+import { addItem, getIncomingRequests, getItems, getMessages, removeItem, sendMessage, updateItem, updateRequestStatus } from "../services/borrowService";
 import { useAuth } from "./useAuth";
 import "../styles/AdminDashboard.css";
 
@@ -80,6 +80,15 @@ export default function AdminDashboard() {
   const openChat = (req) => {
     setChat(req);
     setDraft("");
+  };
+
+  const changeRequestStatus = async (req, status) => {
+    try {
+      await updateRequestStatus(req.id, status);
+      await refresh();
+      if (chat?.id === req.id) setChat({ ...chat, status });
+      setMessage(`Request marked ${status}.`);
+    } catch (e) { setError(e.message); }
   };
 
   const closeChat = () => {
@@ -191,6 +200,12 @@ export default function AdminDashboard() {
                 <span className={`admin-request-status status-${req.status}`}>
                   {req.status}
                 </span>
+                {req.status === "pending" && (
+                  <span className="admin-request-actions" onClick={(e) => e.stopPropagation()}>
+                    <button className="btn btn-sm btn-outline-success" onClick={() => changeRequestStatus(req, "accepted")}>Accept</button>
+                    <button className="btn btn-sm btn-outline-danger" onClick={() => changeRequestStatus(req, "declined")}>Decline</button>
+                  </span>
+                )}
                 <span className="admin-request-badge">Chat →</span>
               </article>
             ))}

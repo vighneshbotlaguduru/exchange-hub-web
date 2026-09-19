@@ -32,3 +32,4 @@ android/local.properties
 *.sw?
 output/
 tmp/
+push-to-github.bat

@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { completeRegistration, startRegistration } from "../services/authService";
+import { useAuth } from "./useAuth";
 import "../styles/Register.css";
 
 export default function Register() {
+  const { isAuthenticated } = useAuth();
   const [form, setForm] = useState({ name: "", email: "" });
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
@@ -11,6 +13,27 @@ export default function Register() {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    if (window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const errorDesc = hashParams.get("error_description");
+      const errorCode = hashParams.get("error_code");
+      if (errorCode || errorDesc) {
+        setError(
+          errorDesc?.replace(/\+/g, " ") ||
+            "This verification link has expired or was already used. Please enter the 6-digit verification code below or request a new link."
+        );
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+  }, []);
 
   const sendLink = async (e) => {
     e.preventDefault();

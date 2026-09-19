@@ -1,0 +1,18 @@
+/* Android-only app shell refinements. Desktop and browser layouts are unaffected. */
+html.platform-android body { min-width: 0; background: #f5f8f7; }
+html.platform-android .site-header { position: sticky; top: 0; z-index: 20; }
+html.platform-android .site-nav { padding: .8rem 1rem; }
+html.platform-android .nav-links { gap: .45rem; }
+html.platform-android .nav-links a:not(.btn) { display: none; }
+html.platform-android .auth-page { min-height: calc(100svh - 60px); padding: 1rem; align-items: start; }
+html.platform-android .auth-form { width: 100%; margin-top: 1rem; padding: 1.25rem; border-radius: 16px; }
+html.platform-android .auth-form h1 { font-size: 1.7rem; }
+html.platform-android .otp-input-group { flex-direction: column; }
+html.platform-android .otp-btn { width: 100%; }
+html.platform-android .dashboard-sidebar { position: sticky; top: 0; z-index: 20; }
+html.platform-android .dashboard-main { padding: 1rem .85rem 2rem; }
+html.platform-android .ud-header { gap: .8rem; }
+html.platform-android .ud-header-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+html.platform-android .ud-header-actions .btn-primary { grid-column: 1 / -1; }
+html.platform-android .borrow-grid { grid-template-columns: 1fr; }
+html.platform-android .chat-panel { position: fixed; inset: auto .75rem .75rem; z-index: 30; max-height: 78svh; }

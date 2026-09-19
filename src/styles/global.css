@@ -7,3 +7,4 @@ h1 { font-weight: 750; letter-spacing: 0; }
 button, input { font: inherit; }
 .eyebrow { margin-bottom: .55rem; color: var(--brand); font-size: .78rem; font-weight: 750; letter-spacing: 0; text-transform: uppercase; }
 .btn-primary { --bs-btn-bg: var(--brand); --bs-btn-border-color: var(--brand); --bs-btn-hover-bg: var(--brand-dark); --bs-btn-hover-border-color: var(--brand-dark); }
+.route-loading { min-height: 100vh; display: grid; place-items: center; color: var(--muted); }
