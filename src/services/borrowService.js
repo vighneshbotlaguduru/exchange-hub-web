@@ -18,9 +18,85 @@ export async function getIncomingRequests() { const { data, error } = await requ
 export async function updateRequestStatus(requestId, status) { const { error } = await requireSupabase().from("borrow_requests").update({ status }).eq("id", requestId); fail(error); }
 export async function getMessages(requestId) { const { data, error } = await requireSupabase().from("messages").select("id,body,created_at,profiles!messages_sender_id_fkey(full_name)").eq("borrow_request_id", requestId).order("created_at"); fail(error); return data.map((x) => ({ id: x.id, sender: x.profiles?.full_name || "Member", text: x.body, time: new Date(x.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })); }
 export async function sendMessage(requestId, text) { const { error } = await requireSupabase().from("messages").insert({ borrow_request_id: requestId, body: text.trim() }); fail(error); }
-export async function saveMemberLocation(position) { const { error } = await requireSupabase().from("member_locations").upsert({ user_id: (await requireSupabase().auth.getUser()).data.user.id, latitude: position.coords.latitude, longitude: position.coords.longitude, updated_at: new Date().toISOString() }); fail(error); }
-export async function getEmergencyRequests() { const { data, error } = await requireSupabase().from("emergency_requests").select("id,item_title,note,expires_at,requester_id,profiles!emergency_requests_requester_id_fkey(full_name,email)").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }); fail(error); return data.map((x) => ({ id: x.id, requesterId: x.requester_id, itemTitle: x.item_title, note: x.note, requesterName: x.profiles?.full_name || "Community member", requesterEmail: x.profiles?.email || (x.profiles?.full_name ? `${x.profiles.full_name}@srmist.edu.in` : ""), expiresAt: new Date(x.expires_at).getTime() })); }
-export async function createEmergencyRequest({ itemTitle, note, location }) { const { data, error } = await requireSupabase().functions.invoke("create-emergency-request", { body: { itemTitle: itemTitle.trim(), note: note.trim(), latitude: location.coords.latitude, longitude: location.coords.longitude } }); fail(error); return data; }
+export async function saveMemberLocation(position) {
+  const sb = requireSupabase();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return;
+  const lat = position?.coords?.latitude;
+  const lng = position?.coords?.longitude;
+  if (!lat || !lng) return;
+  const { error } = await sb.from("member_locations").upsert({
+    user_id: user.id,
+    latitude: lat,
+    longitude: lng,
+    updated_at: new Date().toISOString()
+  });
+  if (error) console.warn("Failed to save location:", error);
+}
+export async function getEmergencyRequests() {
+  const { data, error } = await requireSupabase()
+    .from("emergency_requests")
+    .select("id,item_title,note,latitude,longitude,expires_at,requester_id,profiles!emergency_requests_requester_id_fkey(full_name,email)")
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false });
+  fail(error);
+  return data.map((x) => ({
+    id: x.id,
+    requesterId: x.requester_id,
+    itemTitle: x.item_title,
+    note: x.note,
+    latitude: x.latitude,
+    longitude: x.longitude,
+    requesterName: x.profiles?.full_name || "Community member",
+    requesterEmail: x.profiles?.email || (x.profiles?.full_name ? `${x.profiles.full_name}@srmist.edu.in` : ""),
+    expiresAt: new Date(x.expires_at).getTime()
+  }));
+}
+export async function createEmergencyRequest({ itemTitle, note, location }) {
+  const sb = requireSupabase();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) throw new Error("Please log in first.");
+  const lat = location?.coords?.latitude;
+  const lng = location?.coords?.longitude;
+
+  // 1. Try direct RPC create_emergency_request
+  try {
+    const { data, error } = await sb.rpc("create_emergency_request", {
+      p_item_title: itemTitle.trim(),
+      p_note: (note || "").trim(),
+      p_latitude: lat,
+      p_longitude: lng
+    });
+    if (!error && data) return data;
+  } catch (rpcErr) {
+    console.warn("Direct RPC error, attempting table fallback:", rpcErr);
+  }
+
+  // 2. Fallback table insert
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const { data: insertData, error: insertError } = await sb
+    .from("emergency_requests")
+    .insert({
+      requester_id: user.id,
+      item_title: itemTitle.trim(),
+      note: (note || "").trim(),
+      latitude: lat,
+      longitude: lng,
+      expires_at: expiresAt
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    const { data: fnData, error: fnError } = await sb.functions.invoke("create-emergency-request", {
+      body: { itemTitle: itemTitle.trim(), note: (note || "").trim(), latitude: lat, longitude: lng }
+    });
+    fail(fnError);
+    return fnData;
+  }
+
+  return { requestId: insertData.id, recipientCount: 1 };
+}
 export const emergencyRadiusKm = 5;
 export async function getMyListings() {
   const sb = requireSupabase();

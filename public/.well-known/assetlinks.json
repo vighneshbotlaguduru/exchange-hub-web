@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.borrowhub.app",
+      "sha256_cert_fingerprints": [
+        "7A:DC:9E:D5:41:5D:3B:05:9D:48:F9:10:59:7A:92:5A:C2:B3:33:4C:C6:AA:66:26:08:9B:8A:7F:C1:C9:24:ED",
+        "15:3A:95:25:31:DE:F7:F9:6E:9A:8A:27:01:CE:66:91:DE:86:EC:65:2F:5D:87:72:08:92:4B:91:2E:7C:1E:09"
+      ]
+    }
+  }
+]

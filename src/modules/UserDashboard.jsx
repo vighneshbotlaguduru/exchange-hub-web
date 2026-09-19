@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Geolocation } from "@capacitor/geolocation";
+import { supabase } from "../lib/supabase";
 import {
   createEmergencyRequest,
   emergencyRadiusKm,
@@ -21,6 +22,29 @@ const PRESET_CATEGORIES = [
   "Tools", "Electronics", "Photography", "Events",
   "Books", "Sports", "Kitchen", "Other",
 ];
+
+function playEmergencyChime() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    [0, 0.16, 0.32].forEach((offset, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(idx % 2 === 0 ? 920 : 1240, now + offset);
+      gain.gain.setValueAtTime(0.25, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.14);
+    });
+  } catch {
+    // Audio playback blocked or unsupported
+  }
+}
 
 export default function UserDashboard() {
   const { user } = useAuth();
@@ -61,6 +85,26 @@ export default function UserDashboard() {
   });
   const [helpingAlert, setHelpingAlert] = useState(null);
 
+  const triggerAlertNotification = (itemTitle, note, requesterId) => {
+    if (requesterId && user?.id && requesterId === user.id) return;
+    playEmergencyChime();
+    if (navigator.vibrate) {
+      navigator.vibrate([250, 100, 250, 100, 400]);
+    }
+    setNotice(`🚨 URGENT NEARBY ALERT: Someone urgently needs "${itemTitle}"!`);
+
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification("🚨 BorrowHub Emergency Alert", {
+          body: `Nearby student needs: "${itemTitle}"${note ? ` (${note})` : ""}`,
+          icon: "/favicon.ico",
+        });
+      } catch {
+        // Notification failed or blocked
+      }
+    }
+  };
+
   // ============================================================
   // Data fetching
   // ============================================================
@@ -85,16 +129,91 @@ export default function UserDashboard() {
 
   useEffect(() => {
     refresh();
-    const timer = window.setInterval(refresh, 60_000);
-    return () => window.clearInterval(timer);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Request notification permission if available
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+
+    if (!supabase) return undefined;
+
+    // Realtime channel for instant emergency alerts and catalog updates
+    const channel = supabase
+      .channel("dashboard_realtime_feed")
+      .on(
+        "broadcast",
+        { event: "emergency_alert" },
+        (payload) => {
+          const alert = payload.payload;
+          if (alert?.itemTitle) {
+            triggerAlertNotification(alert.itemTitle, alert.note, alert.requesterId);
+          }
+          refresh();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "emergency_requests" },
+        (payload) => {
+          if (payload.new?.item_title) {
+            triggerAlertNotification(payload.new.item_title, payload.new.note, payload.new.requester_id);
+          }
+          refresh();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "listings" },
+        () => {
+          refresh();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "borrow_requests" },
+        () => {
+          refresh();
+        }
+      )
+      .subscribe();
+
+    const timer = window.setInterval(refresh, 15_000);
+
+    return () => {
+      window.clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (chat) {
-      getMessages(chat.id)
-        .then(setMessages)
-        .catch((e) => setError(e.message));
-    }
+    if (!chat) return undefined;
+
+    getMessages(chat.id)
+      .then(setMessages)
+      .catch((e) => setError(e.message));
+
+    if (!supabase) return undefined;
+
+    // Realtime chat subscription for instant incoming messages
+    const chatChannel = supabase
+      .channel(`chat_thread_${chat.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `borrow_request_id=eq.${chat.id}`,
+        },
+        () => {
+          getMessages(chat.id).then(setMessages).catch(() => {});
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(chatChannel);
+    };
   }, [chat]);
 
   // ============================================================
@@ -208,7 +327,29 @@ export default function UserDashboard() {
     getPosition(
       async (position) => {
         try {
-          const data = await createEmergencyRequest({ ...emergency, location: position });
+          const itemTitle = emergency.itemTitle.trim();
+          const note = emergency.note.trim();
+          const data = await createEmergencyRequest({ itemTitle, note, location: position });
+          
+          // Broadcast to all active users on the realtime channel for immediate alert
+          if (supabase) {
+            try {
+              supabase.channel("dashboard_realtime_feed").send({
+                type: "broadcast",
+                event: "emergency_alert",
+                payload: {
+                  id: data.requestId,
+                  itemTitle,
+                  note,
+                  requesterId: user?.id,
+                  requesterName: user?.name,
+                },
+              });
+            } catch {
+              // Channel broadcast fallback
+            }
+          }
+
           setLocationEnabled(true);
           setShowEmergency(false);
           setEmergency({ itemTitle: "", note: "" });
