@@ -84,6 +84,7 @@ export default function UserDashboard() {
     }
   });
   const [helpingAlert, setHelpingAlert] = useState(null);
+  const [activeEmergencyToast, setActiveEmergencyToast] = useState(null);
 
   useEffect(() => {
     if (user?.email && !emergency.email) {
@@ -91,18 +92,34 @@ export default function UserDashboard() {
     }
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const triggerAlertNotification = (itemTitle, note, requesterId) => {
+  const triggerAlertNotification = (alertData) => {
+    if (!alertData) return;
+    const title = alertData.itemTitle || alertData.item_title;
+    const requesterId = alertData.requesterId || alertData.requester_id;
     if (requesterId && user?.id && requesterId === user.id) return;
+
     playEmergencyChime();
     if (navigator.vibrate) {
       navigator.vibrate([250, 100, 250, 100, 400]);
     }
-    setNotice(`🚨 URGENT NEARBY ALERT: Someone urgently needs "${itemTitle}"!`);
+
+    const toastAlert = {
+      id: alertData.id,
+      itemTitle: title,
+      note: alertData.note,
+      phone: alertData.phone,
+      email: alertData.email,
+      requesterName: alertData.requesterName || "Nearby Student",
+      requesterEmail: alertData.requesterEmail || alertData.email,
+    };
+
+    setActiveEmergencyToast(toastAlert);
+    setNotice(`🚨 URGENT NEARBY ALERT: Someone urgently needs "${title}"!`);
 
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
       try {
         new Notification("🚨 BorrowHub Emergency Alert", {
-          body: `Nearby student needs: "${itemTitle}"${note ? ` (${note})` : ""}`,
+          body: `Nearby student needs: "${title}"${alertData.note ? ` (${alertData.note})` : ""}`,
           icon: "/favicon.ico",
         });
       } catch {
@@ -143,17 +160,23 @@ export default function UserDashboard() {
 
     if (!supabase) return undefined;
 
-    // Realtime channel for instant emergency alerts and catalog updates
+    // Realtime channel for instant emergency alerts, request updates, and catalog changes
     const channel = supabase
       .channel("dashboard_realtime_feed")
       .on(
         "broadcast",
         { event: "emergency_alert" },
         (payload) => {
-          const alert = payload.payload;
-          if (alert?.itemTitle) {
-            triggerAlertNotification(alert.itemTitle, alert.note, alert.requesterId);
+          if (payload.payload) {
+            triggerAlertNotification(payload.payload);
           }
+          refresh();
+        }
+      )
+      .on(
+        "broadcast",
+        { event: "request_status_changed" },
+        () => {
           refresh();
         }
       )
@@ -161,8 +184,8 @@ export default function UserDashboard() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "emergency_requests" },
         (payload) => {
-          if (payload.new?.item_title) {
-            triggerAlertNotification(payload.new.item_title, payload.new.note, payload.new.requester_id);
+          if (payload.new) {
+            triggerAlertNotification(payload.new);
           }
           refresh();
         }
@@ -183,7 +206,7 @@ export default function UserDashboard() {
       )
       .subscribe();
 
-    const timer = window.setInterval(refresh, 15_000);
+    const timer = window.setInterval(refresh, 12_000);
 
     return () => {
       window.clearInterval(timer);
@@ -194,15 +217,26 @@ export default function UserDashboard() {
   useEffect(() => {
     if (!chat) return undefined;
 
-    getMessages(chat.id)
-      .then(setMessages)
-      .catch((e) => setError(e.message));
+    const fetchChatMessages = () => {
+      getMessages(chat.id)
+        .then(setMessages)
+        .catch((e) => setError(e.message));
+    };
+
+    fetchChatMessages();
 
     if (!supabase) return undefined;
 
     // Realtime chat subscription for instant incoming messages
     const chatChannel = supabase
       .channel(`chat_thread_${chat.id}`)
+      .on(
+        "broadcast",
+        { event: "new_message" },
+        () => {
+          fetchChatMessages();
+        }
+      )
       .on(
         "postgres_changes",
         {
@@ -212,12 +246,16 @@ export default function UserDashboard() {
           filter: `borrow_request_id=eq.${chat.id}`,
         },
         () => {
-          getMessages(chat.id).then(setMessages).catch(() => {});
+          fetchChatMessages();
         }
       )
       .subscribe();
 
+    // Fast 3s interval polling while chat is open as a failsafe
+    const chatTimer = window.setInterval(fetchChatMessages, 3_000);
+
     return () => {
+      window.clearInterval(chatTimer);
       supabase.removeChannel(chatChannel);
     };
   }, [chat]);
@@ -467,6 +505,95 @@ export default function UserDashboard() {
 
   return (
     <div className="ud-root">
+
+      {/* ── Realtime Emergency Alert Toast / Pop-up (Instant APK Alert) ─── */}
+      {activeEmergencyToast && (
+        <div style={{
+          position: "fixed",
+          top: "1rem",
+          left: "1rem",
+          right: "1rem",
+          maxWidth: "520px",
+          margin: "0 auto",
+          background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+          color: "#ffffff",
+          padding: "1.1rem 1.25rem",
+          borderRadius: "16px",
+          boxShadow: "0 20px 40px rgba(0,0,0,0.5), 0 0 0 2px #ef4444",
+          zIndex: 100000,
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.65rem",
+          animation: "modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ fontSize: "1.4rem" }}>🚨</span>
+              <strong style={{ color: "#f87171", fontSize: "0.95rem", letterSpacing: "0.02em" }}>
+                URGENT CAMPUS ALERT
+              </strong>
+            </div>
+            <button
+              onClick={() => setActiveEmergencyToast(null)}
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "#94a3b8",
+                fontSize: "1.2rem",
+                cursor: "pointer",
+                padding: "0 0.3rem",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+          <p style={{ margin: 0, fontSize: "0.9rem", color: "#f1f5f9", lineHeight: 1.45 }}>
+            <strong>{activeEmergencyToast.requesterName}</strong> urgently needs <strong>"{activeEmergencyToast.itemTitle}"</strong>!
+            {activeEmergencyToast.note && (
+              <span style={{ display: "block", color: "#cbd5e1", fontSize: "0.82rem", marginTop: "0.25rem", fontStyle: "italic" }}>
+                "{activeEmergencyToast.note}"
+              </span>
+            )}
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.3rem" }}>
+            <button
+              onClick={() => {
+                handleAcceptAlert(activeEmergencyToast);
+                setActiveEmergencyToast(null);
+              }}
+              style={{
+                background: "#059669",
+                color: "#ffffff",
+                border: 0,
+                padding: "0.6rem 1rem",
+                borderRadius: "8px",
+                fontWeight: "700",
+                fontSize: "0.88rem",
+                cursor: "pointer",
+                flex: 1,
+                boxShadow: "0 4px 12px rgba(5, 150, 105, 0.4)",
+              }}
+            >
+              📞 Accept & Connect (Call / Email)
+            </button>
+            <button
+              onClick={() => setActiveEmergencyToast(null)}
+              style={{
+                background: "#334155",
+                color: "#cbd5e1",
+                border: 0,
+                padding: "0.6rem 0.85rem",
+                borderRadius: "8px",
+                fontWeight: "600",
+                fontSize: "0.85rem",
+                cursor: "pointer",
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Page header ──────────────────────────────────────── */}
       <div className="ud-header">

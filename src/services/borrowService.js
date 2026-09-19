@@ -15,9 +15,81 @@ export async function getMyRequest(listingId) { const { data, error } = await re
 export async function requestBorrow(item) { const { data, error } = await requireSupabase().from("borrow_requests").insert({ listing_id: item.id, owner_id: item.owner_id }).select("id,listing_id,created_at,listings(title),profiles!borrow_requests_owner_id_fkey(full_name)").single(); if (error) { if (error.code === "23505" || (error.message || "").includes("409") || String(error.code) === "409") { const existing = await getMyRequest(item.id); if (existing) return existing; } fail(error); } return mapRequest(data); }
 export async function getRequests() { const { data, error } = await requireSupabase().from("borrow_requests").select("id,listing_id,created_at,listings(title),profiles!borrow_requests_owner_id_fkey(full_name)").order("created_at", { ascending: false }); fail(error); return data.map(mapRequest); }
 export async function getIncomingRequests() { const { data, error } = await requireSupabase().from("borrow_requests").select("id,listing_id,created_at,status,listings(title),borrower:profiles!borrow_requests_borrower_id_fkey(full_name)").order("created_at", { ascending: false }); fail(error); return data.map((x) => ({ id: x.id, itemId: x.listing_id, itemTitle: x.listings?.title || "Unknown item", borrowerName: x.borrower?.full_name || "Community member", status: x.status || "pending", createdAt: x.created_at })); }
-export async function updateRequestStatus(requestId, status) { const { error } = await requireSupabase().from("borrow_requests").update({ status }).eq("id", requestId); fail(error); }
-export async function getMessages(requestId) { const { data, error } = await requireSupabase().from("messages").select("id,body,created_at,profiles!messages_sender_id_fkey(full_name)").eq("borrow_request_id", requestId).order("created_at"); fail(error); return data.map((x) => ({ id: x.id, sender: x.profiles?.full_name || "Member", text: x.body, time: new Date(x.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })); }
-export async function sendMessage(requestId, text) { const { error } = await requireSupabase().from("messages").insert({ borrow_request_id: requestId, body: text.trim() }); fail(error); }
+export async function updateRequestStatus(requestId, status) {
+  const sb = requireSupabase();
+  const { data, error } = await sb
+    .from("borrow_requests")
+    .update({ status })
+    .eq("id", requestId)
+    .select("id,listing_id,status")
+    .maybeSingle();
+
+  if (error) {
+    console.error("Error updating borrow request:", error);
+    fail(error);
+  }
+
+  // When accepted, mark the listing as unavailable (loaned out)
+  if (data?.listing_id) {
+    if (status === "accepted") {
+      await sb.from("listings").update({ available: false }).eq("id", data.listing_id);
+    } else if (status === "returned" || status === "declined") {
+      await sb.from("listings").update({ available: true }).eq("id", data.listing_id);
+    }
+  }
+
+  try {
+    sb.channel("dashboard_realtime_feed").send({
+      type: "broadcast",
+      event: "request_status_changed",
+      payload: { requestId, status }
+    });
+  } catch {}
+
+  return data;
+}
+export async function getMessages(requestId) {
+  const { data, error } = await requireSupabase()
+    .from("messages")
+    .select("id,body,created_at,sender_id,profiles!messages_sender_id_fkey(full_name)")
+    .eq("borrow_request_id", requestId)
+    .order("created_at");
+  fail(error);
+  return data.map((x) => ({
+    id: x.id,
+    sender: x.profiles?.full_name || "Member",
+    senderId: x.sender_id,
+    text: x.body,
+    time: new Date(x.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  }));
+}
+export async function sendMessage(requestId, text) {
+  const sb = requireSupabase();
+  const { data: { user } } = await sb.auth.getUser();
+  const { data, error } = await sb
+    .from("messages")
+    .insert({ borrow_request_id: requestId, body: text.trim() })
+    .select("id,borrow_request_id,body,created_at,sender_id")
+    .single();
+  fail(error);
+
+  try {
+    sb.channel(`chat_thread_${requestId}`).send({
+      type: "broadcast",
+      event: "new_message",
+      payload: {
+        id: data.id,
+        requestId,
+        body: text.trim(),
+        senderId: user?.id,
+        senderName: user?.user_metadata?.full_name || user?.email,
+        createdAt: new Date().toISOString()
+      }
+    });
+  } catch {}
+
+  return data;
+}
 export async function saveMemberLocation(position) {
   const sb = requireSupabase();
   const { data: { user } } = await sb.auth.getUser();

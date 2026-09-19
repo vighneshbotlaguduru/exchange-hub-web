@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 import { addItem, approveItem, getIncomingRequests, getItems, getMessages, rejectItem, removeItem, sendMessage, updateItem, updateRequestStatus } from "../services/borrowService";
 import { useAuth } from "./useAuth";
 import "../styles/AdminDashboard.css";
@@ -33,14 +34,65 @@ export default function AdminDashboard() {
     }
   };
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+
+    if (!supabase) return undefined;
+
+    const channel = supabase
+      .channel("admin_realtime_feed")
+      .on("broadcast", { event: "request_status_changed" }, () => refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "borrow_requests" }, () => refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "listings" }, () => refresh())
+      .subscribe();
+
+    const timer = window.setInterval(refresh, 10_000);
+
+    return () => {
+      window.clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
-    if (chat) {
+    if (!chat) return undefined;
+
+    const fetchChatMessages = () => {
       getMessages(chat.id)
         .then(setMessages)
         .catch((e) => setError(e.message));
-    }
+    };
+
+    fetchChatMessages();
+
+    if (!supabase) return undefined;
+
+    const chatChannel = supabase
+      .channel(`chat_thread_${chat.id}`)
+      .on("broadcast", { event: "new_message" }, () => {
+        fetchChatMessages();
+      })
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `borrow_request_id=eq.${chat.id}`,
+        },
+        () => {
+          fetchChatMessages();
+        }
+      )
+      .subscribe();
+
+    // Fast 3s interval polling while chat modal is open
+    const chatTimer = window.setInterval(fetchChatMessages, 3_000);
+
+    return () => {
+      window.clearInterval(chatTimer);
+      supabase.removeChannel(chatChannel);
+    };
   }, [chat]);
 
   const submit = async (e) => {
