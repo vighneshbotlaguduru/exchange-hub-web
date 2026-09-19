@@ -1,1 +1,42 @@
-:root { --brand: #0b6b58; --brand-dark: #064b3e; --ink: #17211f; --muted: #68736f; --line: #dce4e1; --surface: #ffffff; --canvas: #f5f7f6; }
+:root {
+  /* Brand colors */
+  --brand: #059669;
+  --brand-dark: #047857;
+  --brand-light: #ecfdf5;
+  --brand-gradient: linear-gradient(135deg, #059669 0%, #0d9488 100%);
+  --brand-glow: 0 4px 20px rgba(5, 150, 105, 0.25);
+
+  /* Neutrals */
+  --ink: #0f172a;
+  --ink-light: #334155;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --surface: #ffffff;
+  --surface-hover: #f8fafc;
+  --canvas: #f1f5f9;
+
+  /* Accent states */
+  --danger: #e11d48;
+  --danger-light: #fff1f2;
+  --warning: #f59e0b;
+  --warning-light: #fffbeb;
+  --info: #0284c7;
+  --info-light: #f0f9ff;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 6px 16px -2px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 28px -4px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 20px 36px -6px rgba(15, 23, 42, 0.16);
+
+  /* Radius */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
+
+  /* Typography */
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
