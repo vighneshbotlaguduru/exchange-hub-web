@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addItem, getIncomingRequests, getItems, getMessages, removeItem, sendMessage, updateItem, updateRequestStatus } from "../services/borrowService";
+import { addItem, approveItem, getIncomingRequests, getItems, getMessages, rejectItem, removeItem, sendMessage, updateItem, updateRequestStatus } from "../services/borrowService";
 import { useAuth } from "./useAuth";
 import "../styles/AdminDashboard.css";
 
@@ -75,6 +75,28 @@ export default function AdminDashboard() {
   const deleteItem = async (item) => {
     if (window.confirm(`Remove ${item.title} from the borrowing library?`))
       try { await removeItem(item.id); refresh(); } catch (e) { setError(e.message); }
+  };
+
+  const handleApprove = async (item) => {
+    try {
+      await approveItem(item.id);
+      setMessage(`Approved "${item.title}" for community borrowing.`);
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const handleReject = async (item) => {
+    if (window.confirm(`Reject listing "${item.title}"?`)) {
+      try {
+        await rejectItem(item.id);
+        setMessage(`Rejected "${item.title}".`);
+        await refresh();
+      } catch (e) {
+        setError(e.message);
+      }
+    }
   };
 
   const openChat = (req) => {
@@ -202,8 +224,13 @@ export default function AdminDashboard() {
                 </span>
                 {req.status === "pending" && (
                   <span className="admin-request-actions" onClick={(e) => e.stopPropagation()}>
-                    <button className="btn btn-sm btn-outline-success" onClick={() => changeRequestStatus(req, "accepted")}>Accept</button>
-                    <button className="btn btn-sm btn-outline-danger" onClick={() => changeRequestStatus(req, "declined")}>Decline</button>
+                    <button className="btn btn-sm btn-success" onClick={() => changeRequestStatus(req, "accepted")}>✓ Accept</button>
+                    <button className="btn btn-sm btn-outline-danger" onClick={() => changeRequestStatus(req, "declined")}>✕ Decline</button>
+                  </span>
+                )}
+                {req.status === "accepted" && (
+                  <span className="admin-request-actions" onClick={(e) => e.stopPropagation()}>
+                    <button className="btn btn-sm btn-outline-primary" onClick={() => changeRequestStatus(req, "returned")}>↩ Mark Returned</button>
                   </span>
                 )}
                 <span className="admin-request-badge">Chat →</span>
@@ -280,7 +307,7 @@ export default function AdminDashboard() {
         <div className="panel-heading">
           <div>
             <h2>All borrowing products</h2>
-            <p>Changes are saved securely to the library.</p>
+            <p>Review submitted items, adjust availability, and edit community gear.</p>
           </div>
         </div>
         <div className="admin-items">
@@ -290,15 +317,24 @@ export default function AdminDashboard() {
               <div className="admin-item-info">
                 <span>{item.category}</span>
                 <h3>{item.title}</h3>
-                <p>Maximum duration: <strong>{item.duration} days</strong></p>
+                <p>Maximum duration: <strong>{item.duration} days</strong> · Owner: {item.ownerName}</p>
               </div>
-              <span className={`availability ${item.available ? "available" : "paused"}`}>
-                {item.available ? "Available" : "Paused"}
+              <span className={`availability ${item.status === 'pending' ? 'pending-badge' : item.available ? 'available' : 'paused'}`}>
+                {item.status === 'pending' ? '⏳ Pending Approval' : item.available ? '● Available' : '○ Paused'}
               </span>
               <div className="admin-actions">
-                <button className="btn btn-outline-primary btn-sm" onClick={() => edit(item)}>Edit</button>
-                <button className="btn btn-outline-secondary btn-sm" onClick={() => toggle(item)}>{item.available ? "Pause" : "Publish"}</button>
-                <button className="btn btn-outline-danger btn-sm" onClick={() => deleteItem(item)}>Remove</button>
+                {item.status === 'pending' ? (
+                  <>
+                    <button className="btn btn-success btn-sm" onClick={() => handleApprove(item)}>✓ Approve</button>
+                    <button className="btn btn-outline-danger btn-sm" onClick={() => handleReject(item)}>Reject</button>
+                  </>
+                ) : (
+                  <>
+                    <button className="btn btn-outline-primary btn-sm" onClick={() => edit(item)}>Edit</button>
+                    <button className="btn btn-outline-secondary btn-sm" onClick={() => toggle(item)}>{item.available ? "Pause" : "Publish"}</button>
+                    <button className="btn btn-outline-danger btn-sm" onClick={() => deleteItem(item)}>Remove</button>
+                  </>
+                )}
               </div>
             </article>
           ))}
