@@ -778,33 +778,46 @@ export default function UserDashboard() {
         </div>
       )}
 
-      {/* ── Page header ──────────────────────────────────────── */}
-      <div className="ud-header">
-        <div className="ud-header-text">
-          <p className="eyebrow">Your borrowing space</p>
-          <h1 className="ud-title">What will you borrow?</h1>
-          <p className="ud-subtitle">
-            Browse available items or share something useful with the campus community.
+      {/* ── Mobile & Desktop Modern App Hero ─────────────────── */}
+      <div className="ud-hero-banner">
+        <div className="ud-hero-top">
+          <span className="ud-badge-pill">
+            <span className="ud-badge-dot"></span>
+            SRMIST Peer-to-Peer Hub
+          </span>
+          <button
+            type="button"
+            className={`ud-hero-btn-gps ${locationEnabled ? "gps-on" : ""}`}
+            onClick={handleEnableLocation}
+            title={locationEnabled ? "Campus GPS location active" : "Enable GPS for nearby emergency alerts"}
+          >
+            {locationEnabled ? "📍 GPS Active" : "📍 Enable Location"}
+          </button>
+        </div>
+
+        <div className="ud-hero-text">
+          <h1 className="ud-hero-title">
+            Hey, {user?.name ? user.name.split(" ")[0] : "Student"} 👋
+          </h1>
+          <p className="ud-hero-subtitle">
+            Borrow gadgets, tools &amp; lab gear from classmates, or share with campus.
           </p>
         </div>
-        <div className="ud-header-actions">
+
+        <div className="ud-hero-actions">
           <button
-            className={`btn btn-sm ${locationEnabled ? "btn-success" : "btn-outline-secondary"}`}
-            onClick={handleEnableLocation}
-          >
-            {locationEnabled ? "Location on" : "Enable location"}
-          </button>
-          <button
-            className="btn btn-sm emergency-button"
-            onClick={() => setShowEmergency((v) => !v)}
-          >
-            {showEmergency ? "Close" : "Emergency request"}
-          </button>
-          <button
-            className="btn btn-sm btn-primary"
+            type="button"
+            className={`ud-hero-btn ud-hero-btn-post ${showPost ? "active" : ""}`}
             onClick={() => setShowPost((v) => !v)}
           >
-            {showPost ? "Close form" : "+ Post an item"}
+            {showPost ? "✕ Close Form" : "＋ Post an Item"}
+          </button>
+          <button
+            type="button"
+            className={`ud-hero-btn ud-hero-btn-sos ${showEmergency ? "active" : ""}`}
+            onClick={() => setShowEmergency((v) => !v)}
+          >
+            {showEmergency ? "✕ Close SOS" : "🚨 Emergency SOS"}
           </button>
         </div>
       </div>
@@ -1290,28 +1303,36 @@ export default function UserDashboard() {
                         className="borrow-card-img"
                         src={item.image}
                         alt={item.title}
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
                       />
                       {item.category && (
                         <span className="borrow-card-cat">{item.category}</span>
                       )}
+                      <span className="borrow-card-avail-badge">
+                        ● Available
+                      </span>
                     </div>
                     <div className="borrow-card-body">
                       <h3 className="borrow-card-title">{item.title}</h3>
                       <p className="borrow-card-desc">{item.description}</p>
-                      <p className="borrow-card-owner">By {item.ownerName}</p>
+                      <div className="borrow-card-owner-meta">
+                        <span className="owner-avatar-icon">👤</span>
+                        <span className="owner-name-text">{item.ownerName}</span>
+                      </div>
                     </div>
                     <div className="borrow-card-footer">
                       <span className="borrow-card-duration">
-                        Up to <strong>{item.duration} days</strong>
+                        ⏱️ Up to <strong>{item.duration}d</strong>
                       </span>
                       {isOwn ? (
                         <span className="borrow-card-own-badge">Your item</span>
                       ) : (
                         <button
-                          className="btn btn-primary btn-sm"
+                          type="button"
+                          className="btn btn-primary btn-sm borrow-btn"
                           onClick={() => handleBorrow(item)}
                         >
-                          Request &amp; chat
+                          Request &amp; Chat →
                         </button>
                       )}
                     </div>

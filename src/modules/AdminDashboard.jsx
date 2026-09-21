@@ -256,38 +256,73 @@ export default function AdminDashboard() {
           <p className="admin-requests-empty">No borrow requests yet.</p>
         ) : (
           <div className="admin-requests">
-            {requests.map((req) => (
-              <article
-                className={`admin-request-row${chat?.id === req.id ? " active" : ""}`}
-                key={req.id}
-                onClick={() => openChat(req)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter") openChat(req); }}
-              >
-                <div className="admin-request-info">
-                  <strong>{req.itemTitle}</strong>
-                  <span>
-                    Requested by <em>{req.borrowerName}</em> · {new Date(req.createdAt).toLocaleDateString()}
+            {requests.map((req) => {
+              const isOwnItem = (req.owner_id && user?.id && req.owner_id === user.id) ||
+                                (req.listing?.owner_id && user?.id && req.listing?.owner_id === user.id);
+              const itemOwnerName = req.ownerName || req.listing?.owner?.name || "Student Owner";
+
+              return (
+                <article
+                  className={`admin-request-row${chat?.id === req.id ? " active" : ""}`}
+                  key={req.id}
+                  onClick={() => openChat(req)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter") openChat(req); }}
+                >
+                  <div className="admin-request-info">
+                    <strong>{req.itemTitle}</strong>
+                    <span>
+                      Requested by <em>{req.borrowerName}</em> · {new Date(req.createdAt).toLocaleDateString()}
+                    </span>
+                    <span style={{ fontSize: "0.75rem", color: "#64748b", display: "block", marginTop: "0.15rem" }}>
+                      Item Owner: <strong>{itemOwnerName}</strong> {isOwnItem ? "(You)" : ""}
+                    </span>
+                  </div>
+
+                  <span className={`admin-request-status status-${req.status}`}>
+                    {req.status === "pending" && "⏳ Pending"}
+                    {req.status === "accepted" && "🤝 On Loan"}
+                    {req.status === "returned" && "✅ Returned"}
+                    {req.status === "declined" && "❌ Declined"}
                   </span>
-                </div>
-                <span className={`admin-request-status status-${req.status}`}>
-                  {req.status}
-                </span>
-                {req.status === "pending" && (
-                  <span className="admin-request-actions" onClick={(e) => e.stopPropagation()}>
-                    <button className="btn btn-sm btn-success" onClick={() => changeRequestStatus(req, "accepted")}>✓ Accept</button>
-                    <button className="btn btn-sm btn-outline-danger" onClick={() => changeRequestStatus(req, "declined")}>✕ Decline</button>
-                  </span>
-                )}
-                {req.status === "accepted" && (
-                  <span className="admin-request-actions" onClick={(e) => e.stopPropagation()}>
-                    <button className="btn btn-sm btn-outline-primary" onClick={() => changeRequestStatus(req, "returned")}>↩ Mark Returned</button>
-                  </span>
-                )}
-                <span className="admin-request-badge">Chat →</span>
-              </article>
-            ))}
+
+                  {/* Actions: ONLY the owner who posted the item can approve or mark returned */}
+                  {isOwnItem ? (
+                    <>
+                      {req.status === "pending" && (
+                        <span className="admin-request-actions" onClick={(e) => e.stopPropagation()}>
+                          <button className="btn btn-sm btn-success" onClick={() => changeRequestStatus(req, "accepted")}>✓ Accept</button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={() => changeRequestStatus(req, "declined")}>✕ Decline</button>
+                        </span>
+                      )}
+                      {req.status === "accepted" && (
+                        <span className="admin-request-actions" onClick={(e) => e.stopPropagation()}>
+                          <button className="btn btn-sm btn-outline-primary" onClick={() => changeRequestStatus(req, "returned")}>↩ Mark Returned</button>
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "#64748b",
+                        background: "#f8fafc",
+                        padding: "0.25rem 0.5rem",
+                        borderRadius: "6px",
+                        border: "1px solid #e2e8f0",
+                        whiteSpace: "nowrap",
+                      }}
+                      title="Only the student who posted this item can approve or mark it as returned"
+                    >
+                      🔒 Owner-Managed ({itemOwnerName})
+                    </span>
+                  )}
+
+                  <span className="admin-request-badge">Chat →</span>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
@@ -372,7 +407,7 @@ export default function AdminDashboard() {
                 <p>Maximum duration: <strong>{item.duration} days</strong> · Owner: {item.ownerName}</p>
               </div>
               <span className={`availability ${item.status === 'pending' ? 'pending-badge' : item.available ? 'available' : 'paused'}`}>
-                {item.status === 'pending' ? '⏳ Pending Approval' : item.available ? '● Available' : '○ Paused'}
+                {item.status === 'pending' ? '⏳ Pending Review' : item.available ? '● Available in Catalog' : '🤝 On Loan (Currently Borrowed)'}
               </span>
               <div className="admin-actions">
                 {item.status === 'pending' ? (
