@@ -24,7 +24,7 @@ export async function initPushNotifications(userId, onActionCallback) {
         if (token?.value && supabase) {
           try {
             await supabase
-              .from("users")
+              .from("profiles")
               .update({ fcm_token: token.value })
               .eq("id", userId);
           } catch (err) {
