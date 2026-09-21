@@ -1,4 +1,5 @@
 import { requireSupabase } from "../lib/supabase";
+import { broadcastRealtimeEvent } from "../lib/realtimeBroadcast";
 const fail = (error) => { if (error) throw new Error(error.message || "Unable to complete that request."); };
 const listingFields = "id,title,category,duration:max_duration_days,available,status,image:image_url,description,owner_id,created_at,profiles!listings_owner_id_fkey(full_name,email)";
 const mapListing = (item) => ({ ...item, ownerName: item.profiles?.full_name || "Community member", ownerEmail: item.profiles?.email, profiles: undefined });
@@ -33,23 +34,17 @@ export async function requestBorrow(item) {
   const reqData = mapRequest(data);
 
   // Broadcast real-time event to notify the item owner immediately
-  try {
-    sb.channel("dashboard_realtime_feed").send({
-      type: "broadcast",
-      event: "new_borrow_request",
-      payload: {
-        requestId: data.id,
-        listingId: item.id,
-        itemTitle: item.title,
-        itemImage: item.image,
-        ownerId: item.owner_id,
-        borrowerId: user?.id,
-        borrowerName: user?.user_metadata?.full_name || user?.email || "A community member",
-        borrowerEmail: user?.email || "",
-        createdAt: data.created_at,
-      },
-    });
-  } catch {}
+  broadcastRealtimeEvent("new_borrow_request", {
+    requestId: data.id,
+    listingId: item.id,
+    itemTitle: item.title,
+    itemImage: item.image,
+    ownerId: item.owner_id,
+    borrowerId: user?.id,
+    borrowerName: user?.user_metadata?.full_name || user?.email || "A community member",
+    borrowerEmail: user?.email || "",
+    createdAt: data.created_at,
+  });
 
   return reqData;
 }

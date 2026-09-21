@@ -4,13 +4,37 @@ import { Capacitor } from "@capacitor/core";
 import { supabase } from "./supabase";
 
 /**
+ * Configure high-priority Android notification channel.
+ * Required on Android 8.0+ (API 26+) for heads-up popup and sound.
+ */
+export async function setupNotificationChannels() {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await LocalNotifications.createChannel({
+      id: "borrowhub_alerts",
+      name: "BorrowHub Alerts & Requests",
+      description: "Immediate notifications for borrow requests and urgent nearby alerts",
+      importance: 5, // IMPORTANCE_HIGH (heads-up banner + sound)
+      visibility: 1, // VISIBILITY_PUBLIC (shows on lockscreen)
+      vibration: true,
+      lights: true,
+      lightColor: "#6366F1",
+    });
+  } catch (err) {
+    console.warn("Could not create notification channel:", err);
+  }
+}
+
+/**
  * Initialize Google FCM Push Notifications on Android APK.
- * Saves the unique device token to the Supabase users table.
+ * Saves the unique device token to the Supabase profiles table.
  */
 export async function initPushNotifications(userId, onActionCallback) {
   if (!Capacitor.isNativePlatform() || !userId) return;
 
   try {
+    await setupNotificationChannels();
+
     let permStatus = await PushNotifications.checkPermissions();
     if (permStatus.receive !== "granted") {
       permStatus = await PushNotifications.requestPermissions();
@@ -67,6 +91,7 @@ export async function initPushNotifications(userId, onActionCallback) {
 export async function requestNotificationPermission() {
   try {
     if (Capacitor.isNativePlatform()) {
+      await setupNotificationChannels();
       const perm = await LocalNotifications.checkPermissions();
       if (perm.display !== "granted") {
         await LocalNotifications.requestPermissions();
@@ -82,29 +107,28 @@ export async function requestNotificationPermission() {
 }
 
 /**
- * Dispatch a system notification (shows in Android status bar / notification shade).
+ * Dispatch an immediate system notification to Android status bar / notification drawer.
  */
 export async function sendSystemNotification({ title, body, id }) {
   try {
     if (Capacitor.isNativePlatform()) {
       const notifId = id || Math.floor(Math.random() * 900000) + 100000;
+      await setupNotificationChannels();
       await LocalNotifications.schedule({
         notifications: [
           {
             title,
             body,
             id: notifId,
-            schedule: { at: new Date(Date.now() + 100) },
-            sound: undefined,
-            actionTypeId: "",
-            extra: null,
+            channelId: "borrowhub_alerts",
+            isExactNotification: false,
           },
         ],
       });
       return;
     }
   } catch (nativeErr) {
-    console.warn("Capacitor LocalNotifications failed, falling back to Web Notification:", nativeErr);
+    console.warn("Capacitor LocalNotifications failed:", nativeErr);
   }
 
   // Fallback to Web Notification API (Desktop / Mobile Browser)
@@ -119,6 +143,20 @@ export async function sendSystemNotification({ title, body, id }) {
       // Ignored if browser blocks background notifications
     }
   }
+}
+
+/**
+ * One-tap test function to verify sound, vibration, channel, and status bar notification.
+ */
+export async function testNotification() {
+  playBorrowRequestChime();
+  triggerVibration([200, 100, 200, 100, 300]);
+  await requestNotificationPermission();
+  await sendSystemNotification({
+    title: "🔔 BorrowHub Notification Test",
+    body: "Notifications, sound chime, and vibration are all working successfully!",
+    id: 777777,
+  });
 }
 
 /**

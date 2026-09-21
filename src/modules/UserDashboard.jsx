@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
 import { supabase } from "../lib/supabase";
+import { broadcastRealtimeEvent } from "../lib/realtimeBroadcast";
 import {
   createEmergencyRequest,
   emergencyRadiusKm,
@@ -24,6 +25,7 @@ import {
   sendSystemNotification,
   requestNotificationPermission,
   initPushNotifications,
+  testNotification,
   triggerVibration,
 } from "../lib/notificationService";
 import { useAuth } from "./useAuth";
@@ -40,6 +42,8 @@ export default function UserDashboard() {
 
   // ---------- Data state ----------
   const [items, setItems] = useState([]);
+  const itemsRef = useRef([]);
+  itemsRef.current = items;
   const [myListings, setMyListings] = useState([]);
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [outgoingRequests, setOutgoingRequests] = useState([]);
@@ -231,7 +235,7 @@ export default function UserDashboard() {
         { event: "INSERT", schema: "public", table: "borrow_requests" },
         (payload) => {
           if (payload.new && user?.id && payload.new.owner_id === user.id) {
-            const itm = items.find((x) => x.id === payload.new.listing_id);
+            const itm = itemsRef.current.find((x) => x.id === payload.new.listing_id);
             triggerBorrowRequestAlert({
               requestId: payload.new.id,
               itemTitle: itm?.title || "Your Item",
@@ -435,25 +439,15 @@ export default function UserDashboard() {
           const data = await createEmergencyRequest({ itemTitle, note, phone, email, location: position });
           
           // Broadcast to all active users on the realtime channel for immediate alert
-          if (supabase) {
-            try {
-              supabase.channel("dashboard_realtime_feed").send({
-                type: "broadcast",
-                event: "emergency_alert",
-                payload: {
-                  id: data.requestId,
-                  itemTitle,
-                  note,
-                  phone,
-                  email,
-                  requesterId: user?.id,
-                  requesterName: user?.name,
-                },
-              });
-            } catch {
-              // Channel broadcast fallback
-            }
-          }
+          broadcastRealtimeEvent("emergency_alert", {
+            id: data.requestId,
+            itemTitle,
+            note,
+            phone,
+            email,
+            requesterId: user?.id,
+            requesterName: user?.name,
+          });
 
           setLocationEnabled(true);
           setShowEmergency(false);
@@ -794,14 +788,44 @@ export default function UserDashboard() {
             <span className="ud-badge-dot"></span>
             SRMIST Peer-to-Peer Hub
           </span>
-          <button
-            type="button"
-            className={`ud-hero-btn-gps ${locationEnabled ? "gps-on" : ""}`}
-            onClick={handleEnableLocation}
-            title={locationEnabled ? "Campus GPS location active" : "Enable GPS for nearby emergency alerts"}
-          >
-            {locationEnabled ? "📍 GPS Active" : "📍 Enable Location"}
-          </button>
+          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <button
+              type="button"
+              className="ud-hero-btn-test-notif"
+              onClick={async () => {
+                try {
+                  await testNotification();
+                  setNotice("🔔 Test notification triggered! Check your notification bar.");
+                } catch (e) {
+                  setError("Notification error: " + (e.message || e));
+                }
+              }}
+              style={{
+                background: "rgba(99, 102, 241, 0.22)",
+                border: "1px solid rgba(99, 102, 241, 0.45)",
+                color: "#c7d2fe",
+                borderRadius: "20px",
+                padding: "0.28rem 0.75rem",
+                fontSize: "0.78rem",
+                fontWeight: "600",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.3rem",
+                cursor: "pointer",
+              }}
+              title="Test phone notification, sound chime & vibration"
+            >
+              🔔 Test Alert
+            </button>
+            <button
+              type="button"
+              className={`ud-hero-btn-gps ${locationEnabled ? "gps-on" : ""}`}
+              onClick={handleEnableLocation}
+              title={locationEnabled ? "Campus GPS location active" : "Enable GPS for nearby emergency alerts"}
+            >
+              {locationEnabled ? "📍 GPS Active" : "📍 Enable Location"}
+            </button>
+          </div>
         </div>
 
         <div className="ud-hero-text">
