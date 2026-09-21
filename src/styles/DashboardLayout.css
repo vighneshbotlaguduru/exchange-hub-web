@@ -164,10 +164,38 @@
   display: none;
 }
 
-/* ── Responsive Mobile Design (< 768px) ─────────────── */
-@media (max-width: 768px) {
+/* ── Android Native App Overrides (.platform-android) ─── */
+.platform-android .dashboard-shell {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 100vh !important;
+}
+
+.platform-android .dashboard-sidebar {
+  display: none !important;
+}
+
+.platform-android .mobile-app-bar {
+  display: flex !important;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem) !important;
+}
+
+.platform-android .dashboard-main {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 0.5rem 0.85rem calc(3.5rem + env(safe-area-inset-bottom, 0px)) !important;
+  box-sizing: border-box !important;
+}
+
+/* ── Responsive Mobile Design (< 992px) ─────────────── */
+@media (max-width: 992px) {
   .dashboard-shell {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
   }
 
   .dashboard-sidebar {
@@ -251,6 +279,10 @@
   }
 
   .dashboard-main {
+    max-width: 100%;
+    width: 100%;
     padding: 0.5rem 0.85rem calc(2.5rem + env(safe-area-inset-bottom, 0));
+    box-sizing: border-box;
   }
 }
+

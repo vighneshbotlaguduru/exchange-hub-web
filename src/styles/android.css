@@ -149,63 +149,73 @@
     white-space: nowrap;
   }
 
-  /* Responsive 2-column Compact Item Cards on Mobile */
+  /* Mobile-first Clean 1-Column Cards for Phones & APK */
   .borrow-grid,
   .catalog-grid,
   .item-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 0.75rem !important;
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
   }
 
   .borrow-card,
   .item-card,
   .catalog-card,
   .home-item {
-    border-radius: 14px !important;
+    border-radius: 16px !important;
     overflow: hidden;
     border: 1px solid #e2e8f0;
     background: #ffffff;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
     transition: transform 0.15s ease;
   }
 
   .borrow-card-img,
   .home-item img {
-    height: 120px !important;
+    height: 175px !important;
+    width: 100% !important;
     object-fit: cover;
   }
 
   .borrow-card-body,
   .home-item div {
-    padding: 0.55rem 0.65rem !important;
-    gap: 0.2rem !important;
+    padding: 0.85rem 1rem 0.6rem !important;
+    gap: 0.35rem !important;
   }
 
   .borrow-card-title,
   .home-item h3 {
-    font-size: 0.86rem !important;
-    line-height: 1.25 !important;
+    font-size: 1.05rem !important;
+    font-weight: 750 !important;
+    line-height: 1.3 !important;
   }
 
   .borrow-card-desc,
   .home-item p {
-    font-size: 0.74rem !important;
-    line-height: 1.35 !important;
+    font-size: 0.84rem !important;
+    line-height: 1.45 !important;
+    color: #64748b !important;
     -webkit-line-clamp: 2 !important;
   }
 
   .borrow-card-footer {
-    padding: 0.45rem 0.65rem !important;
+    padding: 0.75rem 1rem !important;
+    background: #f8fafc !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
   }
 
-  .borrow-card-footer .btn {
-    font-size: 0.78rem !important;
-    padding: 0.3rem 0.6rem !important;
+  .borrow-card-footer .btn,
+  .borrow-btn {
+    font-size: 0.86rem !important;
+    font-weight: 700 !important;
+    padding: 0.5rem 1rem !important;
+    border-radius: 9px !important;
   }
 
   .borrow-card:active,
   .item-card:active {
-    transform: scale(0.98);
+    transform: scale(0.99);
   }
 
   /* Emergency Panel as Bottom Sheet on Mobile */
@@ -250,3 +260,141 @@ button:active,
 .btn:active {
   transform: scale(0.98);
 }
+
+/* =====================================================
+   Native Android Platform Rules (always active in APK)
+   ===================================================== */
+.platform-android html,
+.platform-android body {
+  min-width: 0 !important;
+  width: 100% !important;
+  overflow-x: hidden !important;
+  background: #f8fafc !important;
+  font-size: 15px !important;
+}
+
+.platform-android .dashboard-shell {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  background: #f8fafc !important;
+}
+
+.platform-android .dashboard-sidebar {
+  display: none !important;
+}
+
+.platform-android .mobile-app-bar {
+  display: flex !important;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.65rem) !important;
+}
+
+.platform-android .dashboard-main {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0.5rem 0.85rem calc(4rem + env(safe-area-inset-bottom, 0px)) !important;
+  box-sizing: border-box !important;
+}
+
+.platform-android .ud-hero-banner {
+  padding: 1.25rem 1.15rem !important;
+  border-radius: 14px !important;
+}
+
+.platform-android .ud-hero-title {
+  font-size: 1.45rem !important;
+}
+
+.platform-android .ud-hero-subtitle {
+  font-size: 0.84rem !important;
+}
+
+.platform-android .ud-hero-actions {
+  flex-direction: column !important;
+  width: 100% !important;
+}
+
+.platform-android .ud-hero-btn {
+  width: 100% !important;
+  justify-content: center !important;
+  padding: 0.75rem 1rem !important;
+}
+
+.platform-android .ud-metrics {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 0.55rem !important;
+  width: 100% !important;
+}
+
+.platform-android .metric-card {
+  padding: 0.7rem 0.8rem !important;
+  border-radius: 10px !important;
+}
+
+.platform-android .metric-card span {
+  font-size: 0.72rem !important;
+  margin-bottom: 0.2rem !important;
+}
+
+.platform-android .metric-card strong {
+  font-size: 1.35rem !important;
+}
+
+.platform-android .ud-tabs-nav {
+  display: flex !important;
+  gap: 0.45rem !important;
+  overflow-x: auto !important;
+  padding-bottom: 0.4rem !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.platform-android .ud-tabs-nav::-webkit-scrollbar {
+  display: none !important;
+}
+
+.platform-android .ud-tab-btn {
+  flex-shrink: 0 !important;
+  padding: 0.55rem 0.95rem !important;
+  font-size: 0.82rem !important;
+  border-radius: 999px !important;
+}
+
+.platform-android .borrow-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1rem !important;
+  width: 100% !important;
+}
+
+.platform-android .borrow-card {
+  width: 100% !important;
+  border-radius: 14px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  overflow: hidden !important;
+}
+
+.platform-android .borrow-card-img {
+  height: 180px !important;
+  width: 100% !important;
+  object-fit: cover !important;
+}
+
+.platform-android .borrow-card-body {
+  padding: 0.85rem 1rem 0.6rem !important;
+}
+
+.platform-android .borrow-card-footer {
+  padding: 0.7rem 1rem !important;
+  background: #f8fafc !important;
+}
+
+.platform-android .borrow-btn {
+  padding: 0.5rem 1rem !important;
+  font-size: 0.86rem !important;
+}
+
