@@ -23,6 +23,7 @@ import {
   playBorrowRequestChime,
   sendSystemNotification,
   requestNotificationPermission,
+  initPushNotifications,
   triggerVibration,
 } from "../lib/notificationService";
 import { useAuth } from "./useAuth";
@@ -169,6 +170,14 @@ export default function UserDashboard() {
   useEffect(() => {
     refresh();
     requestNotificationPermission();
+
+    if (user?.id) {
+      initPushNotifications(user.id, (notifData) => {
+        if (notifData?.type === "borrow_request") {
+          setActiveTab("incoming");
+        }
+      });
+    }
 
     if (!supabase) return undefined;
 

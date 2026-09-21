@@ -1,5 +1,65 @@
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { Capacitor } from "@capacitor/core";
+import { supabase } from "./supabase";
+
+/**
+ * Initialize Google FCM Push Notifications on Android APK.
+ * Saves the unique device token to the Supabase users table.
+ */
+export async function initPushNotifications(userId, onActionCallback) {
+  if (!Capacitor.isNativePlatform() || !userId) return;
+
+  try {
+    let permStatus = await PushNotifications.checkPermissions();
+    if (permStatus.receive !== "granted") {
+      permStatus = await PushNotifications.requestPermissions();
+    }
+
+    if (permStatus.receive === "granted") {
+      await PushNotifications.register();
+
+      // Successfully registered with Google FCM
+      PushNotifications.addListener("registration", async (token) => {
+        if (token?.value && supabase) {
+          try {
+            await supabase
+              .from("users")
+              .update({ fcm_token: token.value })
+              .eq("id", userId);
+          } catch (err) {
+            console.warn("Could not save FCM token to Supabase:", err);
+          }
+        }
+      });
+
+      // Handle FCM registration error gracefully
+      PushNotifications.addListener("registrationError", (err) => {
+        console.warn("Google FCM registration error:", err);
+      });
+
+      // When push notification is received while app is active
+      PushNotifications.addListener("pushNotificationReceived", (notification) => {
+        playBorrowRequestChime();
+        triggerVibration([200, 100, 200, 100, 300]);
+        sendSystemNotification({
+          title: notification.title || "BorrowHub Alert",
+          body: notification.body || "",
+          id: Math.floor(Math.random() * 900000) + 100000,
+        });
+      });
+
+      // When user taps on the push notification in Android status bar
+      PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+        if (onActionCallback && typeof onActionCallback === "function") {
+          onActionCallback(action.notification?.data || action.notification);
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("Could not initialize PushNotifications:", err);
+  }
+}
 
 /**
  * Request notification permissions across Native Capacitor and Web platforms.
