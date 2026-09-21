@@ -12,16 +12,116 @@ export async function rejectItem(id) { const { error } = await requireSupabase()
 export async function removeItem(id) { const { error } = await requireSupabase().from("listings").delete().eq("id", id); fail(error); }
 const mapRequest = (x) => ({ id: x.id, itemId: x.listing_id, itemTitle: x.listings?.title || "Unknown item", ownerName: x.profiles?.full_name || "Community member", createdAt: x.created_at });
 export async function getMyRequest(listingId) { const { data, error } = await requireSupabase().from("borrow_requests").select("id,listing_id,created_at,listings(title),profiles!borrow_requests_owner_id_fkey(full_name)").eq("listing_id", listingId).maybeSingle(); fail(error); return data ? mapRequest(data) : null; }
-export async function requestBorrow(item) { const { data, error } = await requireSupabase().from("borrow_requests").insert({ listing_id: item.id, owner_id: item.owner_id }).select("id,listing_id,created_at,listings(title),profiles!borrow_requests_owner_id_fkey(full_name)").single(); if (error) { if (error.code === "23505" || (error.message || "").includes("409") || String(error.code) === "409") { const existing = await getMyRequest(item.id); if (existing) return existing; } fail(error); } return mapRequest(data); }
+
+export async function requestBorrow(item) {
+  const sb = requireSupabase();
+  const { data: { user } } = await sb.auth.getUser();
+  const { data, error } = await sb
+    .from("borrow_requests")
+    .insert({ listing_id: item.id, owner_id: item.owner_id })
+    .select("id,listing_id,created_at,listings(title),profiles!borrow_requests_owner_id_fkey(full_name)")
+    .single();
+
+  if (error) {
+    if (error.code === "23505" || (error.message || "").includes("409") || String(error.code) === "409") {
+      const existing = await getMyRequest(item.id);
+      if (existing) return existing;
+    }
+    fail(error);
+  }
+
+  const reqData = mapRequest(data);
+
+  // Broadcast real-time event to notify the item owner immediately
+  try {
+    sb.channel("dashboard_realtime_feed").send({
+      type: "broadcast",
+      event: "new_borrow_request",
+      payload: {
+        requestId: data.id,
+        listingId: item.id,
+        itemTitle: item.title,
+        itemImage: item.image,
+        ownerId: item.owner_id,
+        borrowerId: user?.id,
+        borrowerName: user?.user_metadata?.full_name || user?.email || "A community member",
+        borrowerEmail: user?.email || "",
+        createdAt: data.created_at,
+      },
+    });
+  } catch {}
+
+  return reqData;
+}
+
 export async function getRequests() { const { data, error } = await requireSupabase().from("borrow_requests").select("id,listing_id,created_at,listings(title),profiles!borrow_requests_owner_id_fkey(full_name)").order("created_at", { ascending: false }); fail(error); return data.map(mapRequest); }
-export async function getIncomingRequests() { const { data, error } = await requireSupabase().from("borrow_requests").select("id,listing_id,created_at,status,listings(title),borrower:profiles!borrow_requests_borrower_id_fkey(full_name)").order("created_at", { ascending: false }); fail(error); return data.map((x) => ({ id: x.id, itemId: x.listing_id, itemTitle: x.listings?.title || "Unknown item", borrowerName: x.borrower?.full_name || "Community member", status: x.status || "pending", createdAt: x.created_at })); }
+
+export async function getIncomingRequests() {
+  const { data, error } = await requireSupabase()
+    .from("borrow_requests")
+    .select("id,listing_id,created_at,status,listings(title),borrower:profiles!borrow_requests_borrower_id_fkey(full_name)")
+    .order("created_at", { ascending: false });
+  fail(error);
+  return data.map((x) => ({ id: x.id, itemId: x.listing_id, itemTitle: x.listings?.title || "Unknown item", borrowerName: x.borrower?.full_name || "Community member", status: x.status || "pending", createdAt: x.created_at }));
+}
+
+export async function getMyIncomingRequests() {
+  const sb = requireSupabase();
+  const { data: { user }, error: userErr } = await sb.auth.getUser();
+  if (userErr || !user) return [];
+
+  const { data, error } = await sb
+    .from("borrow_requests")
+    .select("id,listing_id,created_at,status,listings(id,title,image_url,category),borrower:profiles!borrow_requests_borrower_id_fkey(full_name,email)")
+    .eq("owner_id", user.id)
+    .order("created_at", { ascending: false });
+
+  fail(error);
+  return (data || []).map((x) => ({
+    id: x.id,
+    itemId: x.listing_id,
+    itemTitle: x.listings?.title || "Unknown item",
+    itemImage: x.listings?.image_url || "",
+    itemCategory: x.listings?.category || "",
+    borrowerName: x.borrower?.full_name || "Community member",
+    borrowerEmail: x.borrower?.email || "",
+    status: x.status || "pending",
+    createdAt: x.created_at,
+  }));
+}
+
+export async function getMyOutgoingRequests() {
+  const sb = requireSupabase();
+  const { data: { user }, error: userErr } = await sb.auth.getUser();
+  if (userErr || !user) return [];
+
+  const { data, error } = await sb
+    .from("borrow_requests")
+    .select("id,listing_id,created_at,status,listings(id,title,image_url,category),owner:profiles!borrow_requests_owner_id_fkey(full_name,email)")
+    .eq("borrower_id", user.id)
+    .order("created_at", { ascending: false });
+
+  fail(error);
+  return (data || []).map((x) => ({
+    id: x.id,
+    itemId: x.listing_id,
+    itemTitle: x.listings?.title || "Unknown item",
+    itemImage: x.listings?.image_url || "",
+    itemCategory: x.listings?.category || "",
+    ownerName: x.owner?.full_name || "Community member",
+    ownerEmail: x.owner?.email || "",
+    status: x.status || "pending",
+    createdAt: x.created_at,
+  }));
+}
+
 export async function updateRequestStatus(requestId, status) {
   const sb = requireSupabase();
   const { data, error } = await sb
     .from("borrow_requests")
     .update({ status })
     .eq("id", requestId)
-    .select("id,listing_id,status")
+    .select("id,listing_id,status,owner_id,borrower_id")
     .maybeSingle();
 
   if (error) {
@@ -31,18 +131,20 @@ export async function updateRequestStatus(requestId, status) {
 
   // When accepted, mark the listing as unavailable (loaned out)
   if (data?.listing_id) {
-    if (status === "accepted") {
-      await sb.from("listings").update({ available: false }).eq("id", data.listing_id);
-    } else if (status === "returned" || status === "declined") {
-      await sb.from("listings").update({ available: true }).eq("id", data.listing_id);
-    }
+    try {
+      if (status === "accepted") {
+        await sb.from("listings").update({ available: false }).eq("id", data.listing_id);
+      } else if (status === "returned" || status === "declined" || status === "cancelled") {
+        await sb.from("listings").update({ available: true }).eq("id", data.listing_id);
+      }
+    } catch {}
   }
 
   try {
     sb.channel("dashboard_realtime_feed").send({
       type: "broadcast",
       event: "request_status_changed",
-      payload: { requestId, status }
+      payload: { requestId, status, listingId: data?.listing_id, ownerId: data?.owner_id, borrowerId: data?.borrower_id },
     });
   } catch {}
 

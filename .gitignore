@@ -19,6 +19,7 @@ dist-ssr
 android/.gradle
 android/app/build
 android/local.properties
+*.apk
 
 # Editor directories and files
 .vscode/*

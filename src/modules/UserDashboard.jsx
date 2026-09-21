@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
 import { supabase } from "../lib/supabase";
 import {
@@ -9,11 +10,21 @@ import {
   getMessages,
   getMyListings,
   getMyRequest,
+  getMyIncomingRequests,
+  getMyOutgoingRequests,
   requestBorrow,
   saveMemberLocation,
   sendMessage,
   submitItem,
+  updateRequestStatus,
 } from "../services/borrowService";
+import {
+  playEmergencyChime,
+  playBorrowRequestChime,
+  sendSystemNotification,
+  requestNotificationPermission,
+  triggerVibration,
+} from "../lib/notificationService";
 import { useAuth } from "./useAuth";
 import "../styles/UserDashboard.css";
 
@@ -23,44 +34,25 @@ const PRESET_CATEGORIES = [
   "Books", "Sports", "Kitchen", "Other",
 ];
 
-function playEmergencyChime() {
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
-    [0, 0.16, 0.32].forEach((offset, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(idx % 2 === 0 ? 920 : 1240, now + offset);
-      gain.gain.setValueAtTime(0.25, now + offset);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.14);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + offset);
-      osc.stop(now + offset + 0.14);
-    });
-  } catch {
-    // Audio playback blocked or unsupported
-  }
-}
-
 export default function UserDashboard() {
   const { user } = useAuth();
 
   // ---------- Data state ----------
   const [items, setItems] = useState([]);
   const [myListings, setMyListings] = useState([]);
+  const [incomingRequests, setIncomingRequests] = useState([]);
+  const [outgoingRequests, setOutgoingRequests] = useState([]);
   const [emergencyAlerts, setEmergencyAlerts] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   // ---------- UI state ----------
+  const [activeTab, setActiveTab] = useState("catalog"); // "catalog" | "incoming" | "outgoing" | "myListings"
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [showPost, setShowPost] = useState(false);
   const [form, setForm] = useState(BLANK_ITEM);
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [actionInProgress, setActionInProgress] = useState(null);
 
   // ---------- Catalog filters ----------
   const [search, setSearch] = useState("");
@@ -72,7 +64,7 @@ export default function UserDashboard() {
   const [draft, setDraft] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
 
-  // ---------- Emergency ----------
+  // ---------- Emergency & Notifications ----------
   const [showEmergency, setShowEmergency] = useState(false);
   const [emergency, setEmergency] = useState({ itemTitle: "", phone: "", email: "", note: "" });
   const [locationEnabled, setLocationEnabled] = useState(false);
@@ -85,6 +77,7 @@ export default function UserDashboard() {
   });
   const [helpingAlert, setHelpingAlert] = useState(null);
   const [activeEmergencyToast, setActiveEmergencyToast] = useState(null);
+  const [activeBorrowToast, setActiveBorrowToast] = useState(null);
 
   useEffect(() => {
     if (user?.email && !emergency.email) {
@@ -92,6 +85,7 @@ export default function UserDashboard() {
     }
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Emergency Alert Trigger (Urgent Nearby Need)
   const triggerAlertNotification = (alertData) => {
     if (!alertData) return;
     const title = alertData.itemTitle || alertData.item_title;
@@ -99,9 +93,7 @@ export default function UserDashboard() {
     if (requesterId && user?.id && requesterId === user.id) return;
 
     playEmergencyChime();
-    if (navigator.vibrate) {
-      navigator.vibrate([250, 100, 250, 100, 400]);
-    }
+    triggerVibration([250, 100, 250, 100, 400]);
 
     const toastAlert = {
       id: alertData.id,
@@ -116,16 +108,36 @@ export default function UserDashboard() {
     setActiveEmergencyToast(toastAlert);
     setNotice(`🚨 URGENT NEARBY ALERT: Someone urgently needs "${title}"!`);
 
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-      try {
-        new Notification("🚨 BorrowHub Emergency Alert", {
-          body: `Nearby student needs: "${title}"${alertData.note ? ` (${alertData.note})` : ""}`,
-          icon: "/favicon.ico",
-        });
-      } catch {
-        // Notification failed or blocked
-      }
-    }
+    sendSystemNotification({
+      title: "🚨 BorrowHub Emergency Alert",
+      body: `Nearby student needs: "${title}"${alertData.note ? ` (${alertData.note})` : ""}`,
+      id: 999,
+    });
+  };
+
+  // Borrow Request Alert Trigger (Sent to the Item Owner)
+  const triggerBorrowRequestAlert = (reqData) => {
+    if (!reqData) return;
+    if (reqData.borrowerId && user?.id && reqData.borrowerId === user.id) return;
+
+    playBorrowRequestChime();
+    triggerVibration([200, 100, 200, 100, 300]);
+
+    const toastData = {
+      id: reqData.requestId || reqData.id,
+      itemTitle: reqData.itemTitle || "Your Item",
+      borrowerName: reqData.borrowerName || "A community member",
+      borrowerEmail: reqData.borrowerEmail || "",
+    };
+
+    setActiveBorrowToast(toastData);
+    setNotice(`📦 NEW BORROW REQUEST: ${toastData.borrowerName} requested to borrow "${toastData.itemTitle}"!`);
+
+    sendSystemNotification({
+      title: "📦 BorrowHub: New Borrow Request!",
+      body: `${toastData.borrowerName} requested to borrow "${toastData.itemTitle}". Open app to chat & approve.`,
+      id: Math.floor(Math.random() * 900000) + 100000,
+    });
   };
 
   // ============================================================
@@ -134,15 +146,19 @@ export default function UserDashboard() {
 
   const refresh = async () => {
     try {
-      const [fetchedItems, fetchedAlerts, fetchedMine] =
+      const [fetchedItems, fetchedAlerts, fetchedMine, fetchedIncoming, fetchedOutgoing] =
         await Promise.all([
           getItems({ approvedOnly: true }),
           getEmergencyRequests(),
           getMyListings(),
+          getMyIncomingRequests(),
+          getMyOutgoingRequests(),
         ]);
       setItems(fetchedItems);
       setEmergencyAlerts(fetchedAlerts);
       setMyListings(fetchedMine);
+      setIncomingRequests(fetchedIncoming);
+      setOutgoingRequests(fetchedOutgoing);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -152,11 +168,7 @@ export default function UserDashboard() {
 
   useEffect(() => {
     refresh();
-
-    // Request notification permission if available
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
+    requestNotificationPermission();
 
     if (!supabase) return undefined;
 
@@ -175,8 +187,23 @@ export default function UserDashboard() {
       )
       .on(
         "broadcast",
+        { event: "new_borrow_request" },
+        (payload) => {
+          const req = payload.payload;
+          if (req && user?.id && req.ownerId === user.id) {
+            triggerBorrowRequestAlert(req);
+          }
+          refresh();
+        }
+      )
+      .on(
+        "broadcast",
         { event: "request_status_changed" },
-        () => {
+        (payload) => {
+          const change = payload.payload;
+          if (change && user?.id && (change.borrowerId === user.id || change.ownerId === user.id)) {
+            setNotice(`Borrow request for "${change.status}" updated.`);
+          }
           refresh();
         }
       )
@@ -192,21 +219,36 @@ export default function UserDashboard() {
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "listings" },
+        { event: "INSERT", schema: "public", table: "borrow_requests" },
+        (payload) => {
+          if (payload.new && user?.id && payload.new.owner_id === user.id) {
+            const itm = items.find((x) => x.id === payload.new.listing_id);
+            triggerBorrowRequestAlert({
+              requestId: payload.new.id,
+              itemTitle: itm?.title || "Your Item",
+              borrowerName: "A community member",
+            });
+          }
+          refresh();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "borrow_requests" },
         () => {
           refresh();
         }
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "borrow_requests" },
+        { event: "*", schema: "public", table: "listings" },
         () => {
           refresh();
         }
       )
       .subscribe();
 
-    const timer = window.setInterval(refresh, 12_000);
+    const timer = window.setInterval(refresh, 10_000);
 
     return () => {
       window.clearInterval(timer);
@@ -304,6 +346,11 @@ export default function UserDashboard() {
   const pendingCount = useMemo(
     () => myListings.filter((x) => x.status === "pending").length,
     [myListings]
+  );
+
+  const pendingIncomingCount = useMemo(
+    () => incomingRequests.filter((x) => x.status === "pending").length,
+    [incomingRequests]
   );
 
   // ============================================================
@@ -499,6 +546,58 @@ export default function UserDashboard() {
     setHelpingAlert(null);
   };
 
+  // Owner action handlers for item borrow requests
+  const handleApproveBorrow = async (requestId) => {
+    setActionInProgress(requestId);
+    setError("");
+    try {
+      await updateRequestStatus(requestId, "accepted");
+      await refresh();
+      setNotice("Borrow request approved! The borrower has been notified.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleDeclineBorrow = async (requestId) => {
+    setActionInProgress(requestId);
+    setError("");
+    try {
+      await updateRequestStatus(requestId, "rejected");
+      await refresh();
+      setNotice("Borrow request declined.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleMarkReturned = async (requestId) => {
+    setActionInProgress(requestId);
+    setError("");
+    try {
+      await updateRequestStatus(requestId, "returned");
+      await refresh();
+      setNotice("Item marked as returned! It is now available again in the campus catalog.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleOpenChatForRequest = (req) => {
+    const isOwner = req.owner_id === user?.id || req.itemOwnerId === user?.id;
+    setChat({
+      id: req.id,
+      itemTitle: req.itemTitle || req.listing?.title || "Borrow Item",
+      ownerName: isOwner ? (req.borrowerName || req.borrower?.name || "Requester") : (req.ownerName || req.listing?.owner?.name || "Owner"),
+    });
+  };
+
   // ============================================================
   // Render
   // ============================================================
@@ -578,6 +677,90 @@ export default function UserDashboard() {
             </button>
             <button
               onClick={() => setActiveEmergencyToast(null)}
+              style={{
+                background: "#334155",
+                color: "#cbd5e1",
+                border: 0,
+                padding: "0.6rem 0.85rem",
+                borderRadius: "8px",
+                fontWeight: "600",
+                fontSize: "0.85rem",
+                cursor: "pointer",
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Realtime Borrow Request Notification Toast (Owner Alert) ─── */}
+      {activeBorrowToast && (
+        <div style={{
+          position: "fixed",
+          top: activeEmergencyToast ? "9.5rem" : "1rem",
+          left: "1rem",
+          right: "1rem",
+          maxWidth: "520px",
+          margin: "0 auto",
+          background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)",
+          color: "#ffffff",
+          padding: "1.1rem 1.25rem",
+          borderRadius: "16px",
+          boxShadow: "0 20px 40px rgba(0,0,0,0.5), 0 0 0 2px #6366f1",
+          zIndex: 100000,
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.65rem",
+          animation: "modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ fontSize: "1.4rem" }}>📦</span>
+              <strong style={{ color: "#a5b4fc", fontSize: "0.95rem", letterSpacing: "0.02em" }}>
+                NEW BORROW REQUEST FOR YOUR ITEM!
+              </strong>
+            </div>
+            <button
+              onClick={() => setActiveBorrowToast(null)}
+              style={{
+                background: "transparent",
+                border: 0,
+                color: "#94a3b8",
+                fontSize: "1.2rem",
+                cursor: "pointer",
+                padding: "0 0.3rem",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+          <p style={{ margin: 0, fontSize: "0.9rem", color: "#f1f5f9", lineHeight: 1.45 }}>
+            <strong>{activeBorrowToast.borrowerName}</strong> requested to borrow <strong>"{activeBorrowToast.itemTitle}"</strong>.
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.3rem" }}>
+            <button
+              onClick={() => {
+                setActiveTab("incoming");
+                setActiveBorrowToast(null);
+              }}
+              style={{
+                background: "#4f46e5",
+                color: "#ffffff",
+                border: 0,
+                padding: "0.6rem 1rem",
+                borderRadius: "8px",
+                fontWeight: "700",
+                fontSize: "0.88rem",
+                cursor: "pointer",
+                flex: 1,
+                boxShadow: "0 4px 12px rgba(79, 70, 229, 0.4)",
+              }}
+            >
+              View &amp; Manage Request
+            </button>
+            <button
+              onClick={() => setActiveBorrowToast(null)}
               style={{
                 background: "#334155",
                 color: "#cbd5e1",
@@ -714,20 +897,77 @@ export default function UserDashboard() {
 
       {/* ── Metric cards ─────────────────────────────────────── */}
       <div className="ud-metrics">
-        <div className="metric-card">
-          <span>Available now</span>
+        <div
+          className={`metric-card ${activeTab === "catalog" ? "metric-highlight" : ""}`}
+          onClick={() => setActiveTab("catalog")}
+          style={{ cursor: "pointer" }}
+        >
+          <span>Catalog Available</span>
           <strong>{dataLoading ? "\u2014" : availableItems.length}</strong>
         </div>
-        <div className="metric-card">
-          <span>Items submitted</span>
-          <strong>{dataLoading ? "\u2014" : myListings.length}</strong>
-        </div>
-        <div className="metric-card">
-          <span>Pending approval</span>
-          <strong className={pendingCount > 0 ? "pending-text" : ""}>
-            {dataLoading ? "\u2014" : pendingCount || "0"}
+        <div
+          className={`metric-card ${pendingIncomingCount > 0 ? "metric-highlight" : ""}`}
+          onClick={() => setActiveTab("incoming")}
+          style={{ cursor: "pointer" }}
+        >
+          <span>Requests for My Items</span>
+          <strong className={pendingIncomingCount > 0 ? "pending-text" : ""}>
+            {dataLoading ? "\u2014" : pendingIncomingCount > 0 ? `${pendingIncomingCount} Action Needed` : incomingRequests.length}
           </strong>
         </div>
+        <div
+          className={`metric-card ${activeTab === "outgoing" ? "metric-highlight" : ""}`}
+          onClick={() => setActiveTab("outgoing")}
+          style={{ cursor: "pointer" }}
+        >
+          <span>My Borrowed / Requests</span>
+          <strong>{dataLoading ? "\u2014" : outgoingRequests.length}</strong>
+        </div>
+        <div
+          className={`metric-card ${activeTab === "myListings" ? "metric-highlight" : ""}`}
+          onClick={() => setActiveTab("myListings")}
+          style={{ cursor: "pointer" }}
+        >
+          <span>My Posted Items</span>
+          <strong className={pendingCount > 0 ? "pending-text" : ""}>
+            {dataLoading ? "\u2014" : myListings.length}
+          </strong>
+        </div>
+      </div>
+
+      {/* ── Dashboard Navigation Tabs ────────────────────────── */}
+      <div className="ud-tabs-nav" role="tablist">
+        <button
+          type="button"
+          className={`ud-tab-btn ${activeTab === "catalog" ? "active" : ""}`}
+          onClick={() => setActiveTab("catalog")}
+        >
+          🔍 Browse Catalog ({availableItems.length})
+        </button>
+        <button
+          type="button"
+          className={`ud-tab-btn ${activeTab === "incoming" ? "active" : ""}`}
+          onClick={() => setActiveTab("incoming")}
+        >
+          📥 Requests for My Items
+          {pendingIncomingCount > 0 && (
+            <span className="ud-tab-badge-urgent">{pendingIncomingCount} new</span>
+          )}
+        </button>
+        <button
+          type="button"
+          className={`ud-tab-btn ${activeTab === "outgoing" ? "active" : ""}`}
+          onClick={() => setActiveTab("outgoing")}
+        >
+          📤 My Borrowed Items ({outgoingRequests.length})
+        </button>
+        <button
+          type="button"
+          className={`ud-tab-btn ${activeTab === "myListings" ? "active" : ""}`}
+          onClick={() => setActiveTab("myListings")}
+        >
+          🏷️ My Posted Items ({myListings.length})
+        </button>
       </div>
 
       {/* ── Active emergency inbox ───────────────────────────── */}
@@ -943,143 +1183,423 @@ export default function UserDashboard() {
         </section>
       )}
 
-      {/* ── Catalog ──────────────────────────────────────────── */}
-      <section className="ud-panel catalog-panel">
-        <div className="catalog-header">
-          <div>
-            <h2>Borrowing catalog</h2>
-            <p className="catalog-subtitle">
-              Browse approved items available from the campus community.
-            </p>
+      {/* ── Catalog Panel ──────────────────────────────────── */}
+      {activeTab === "catalog" && (
+        <section className="ud-panel catalog-panel fade-in">
+          <div className="catalog-header">
+            <div>
+              <h2>Borrowing catalog</h2>
+              <p className="catalog-subtitle">
+                Browse approved items available from the campus community.
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Search + category filters */}
-        <div className="catalog-controls">
-          <div className="catalog-search-wrap">
-            <span className="search-icon" aria-hidden="true">&#128269;</span>
-            <input
-              className="catalog-search-input"
-              type="search"
-              placeholder="Search items, descriptions, categories..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search catalog"
-            />
-            {search && (
-              <button
-                type="button"
-                className="search-clear"
-                onClick={() => setSearch("")}
-                aria-label="Clear search"
-              >
-                &#10005;
-              </button>
+          {/* Search + category filters */}
+          <div className="catalog-controls">
+            <div className="catalog-search-wrap">
+              <span className="search-icon" aria-hidden="true">&#128269;</span>
+              <input
+                className="catalog-search-input"
+                type="search"
+                placeholder="Search items, descriptions, categories..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search catalog"
+              />
+              {search && (
+                <button
+                  type="button"
+                  className="search-clear"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                >
+                  &#10005;
+                </button>
+              )}
+            </div>
+            {categories.length > 1 && (
+              <div className="category-filters" role="group" aria-label="Filter by category">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    className={`cat-pill ${activeCategory === cat ? "cat-pill--active" : ""}`}
+                    onClick={() => setActiveCategory(cat)}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
-          {categories.length > 1 && (
-            <div className="category-filters" role="group" aria-label="Filter by category">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  className={`cat-pill ${activeCategory === cat ? "cat-pill--active" : ""}`}
-                  onClick={() => setActiveCategory(cat)}
-                >
-                  {cat}
-                </button>
-              ))}
+
+          {/* Result summary */}
+          {!dataLoading && availableItems.length > 0 && (
+            <p className="catalog-count">
+              {filteredItems.length === availableItems.length
+                ? `${availableItems.length} item${availableItems.length !== 1 ? "s" : ""} available`
+                : `${filteredItems.length} of ${availableItems.length} items`}
+            </p>
+          )}
+
+          {/* Loading state */}
+          {dataLoading && (
+            <div className="catalog-state">
+              <div className="catalog-spinner" />
+              <p>Loading catalog...</p>
             </div>
           )}
-        </div>
 
-        {/* Result summary */}
-        {!dataLoading && availableItems.length > 0 && (
-          <p className="catalog-count">
-            {filteredItems.length === availableItems.length
-              ? `${availableItems.length} item${availableItems.length !== 1 ? "s" : ""} available`
-              : `${filteredItems.length} of ${availableItems.length} items`}
-          </p>
-        )}
+          {/* Empty state */}
+          {!dataLoading && filteredItems.length === 0 && (
+            <div className="catalog-state">
+              <span className="catalog-empty-icon" aria-hidden="true">&#128230;</span>
+              <p className="catalog-empty-title">
+                {search || activeCategory !== "All"
+                  ? "No items match your filters."
+                  : "No items available right now."}
+              </p>
+              <p className="catalog-empty-sub">
+                {search || activeCategory !== "All"
+                  ? "Try a different search term or category."
+                  : "Check back soon or post your own item above."}
+              </p>
+              {(search || activeCategory !== "All") && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  style={{ marginTop: "0.75rem" }}
+                  onClick={() => { setSearch(""); setActiveCategory("All"); }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
 
-        {/* Loading state */}
-        {dataLoading && (
-          <div className="catalog-state">
-            <div className="catalog-spinner" />
-            <p>Loading catalog...</p>
+          {/* Item grid */}
+          {!dataLoading && filteredItems.length > 0 && (
+            <div className="borrow-grid">
+              {filteredItems.map((item) => {
+                const isOwn = item.owner_id === user?.id;
+                return (
+                  <article className="borrow-card card-lift" key={item.id}>
+                    <div className="borrow-card-img-wrap">
+                      <img
+                        className="borrow-card-img"
+                        src={item.image}
+                        alt={item.title}
+                      />
+                      {item.category && (
+                        <span className="borrow-card-cat">{item.category}</span>
+                      )}
+                    </div>
+                    <div className="borrow-card-body">
+                      <h3 className="borrow-card-title">{item.title}</h3>
+                      <p className="borrow-card-desc">{item.description}</p>
+                      <p className="borrow-card-owner">By {item.ownerName}</p>
+                    </div>
+                    <div className="borrow-card-footer">
+                      <span className="borrow-card-duration">
+                        Up to <strong>{item.duration} days</strong>
+                      </span>
+                      {isOwn ? (
+                        <span className="borrow-card-own-badge">Your item</span>
+                      ) : (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleBorrow(item)}
+                        >
+                          Request &amp; chat
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Requests for My Items Panel ───────────────────────── */}
+      {activeTab === "incoming" && (
+        <section className="ud-panel requests-panel fade-in">
+          <div className="catalog-header">
+            <div>
+              <h2>📥 Requests for My Items</h2>
+              <p className="catalog-subtitle">
+                Review and approve borrow requests from campus peers, chat directly to coordinate pickup, and mark items returned when they are handed back.
+              </p>
+            </div>
           </div>
-        )}
 
-        {/* Empty state */}
-        {!dataLoading && filteredItems.length === 0 && (
-          <div className="catalog-state">
-            <span className="catalog-empty-icon" aria-hidden="true">&#128230;</span>
-            <p className="catalog-empty-title">
-              {search || activeCategory !== "All"
-                ? "No items match your filters."
-                : "No items available right now."}
-            </p>
-            <p className="catalog-empty-sub">
-              {search || activeCategory !== "All"
-                ? "Try a different search term or category."
-                : "Check back soon or post your own item above."}
-            </p>
-            {(search || activeCategory !== "All") && (
+          {incomingRequests.length === 0 ? (
+            <div className="catalog-state">
+              <span className="catalog-empty-icon" aria-hidden="true">📭</span>
+              <p className="catalog-empty-title">No borrow requests yet</p>
+              <p className="catalog-empty-sub">
+                When fellow students request to borrow any of your posted items, their requests will appear here for you to chat, approve, and manage returns.
+              </p>
+            </div>
+          ) : (
+            <div className="requests-cards-list">
+              {incomingRequests.map((req) => {
+                const isPending = req.status === "pending";
+                const isAccepted = req.status === "accepted";
+                const isReturned = req.status === "returned";
+                const isRejected = req.status === "rejected";
+                const isProcessing = actionInProgress === req.id;
+
+                return (
+                  <article className="borrow-request-card" key={req.id}>
+                    {req.listing?.image && (
+                      <img
+                        className="req-card-img"
+                        src={req.listing.image}
+                        alt={req.itemTitle || "Item"}
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                    )}
+                    <div className="req-card-content">
+                      <div className="req-card-header">
+                        <h3 className="req-card-title">{req.itemTitle || req.listing?.title || "Requested Item"}</h3>
+                        <span className={`status-pill status-${req.status}`}>
+                          {isPending && "⏳ Pending Your Approval"}
+                          {isAccepted && "🤝 On Loan (Approved)"}
+                          {isReturned && "✅ Returned & Available"}
+                          {isRejected && "❌ Declined"}
+                        </span>
+                      </div>
+
+                      <p className="req-card-borrower">
+                        Requested by <strong>{req.borrowerName}</strong> ({req.borrowerEmail})
+                        {req.createdAt && (
+                          <span style={{ display: "block", fontSize: "0.78rem", color: "#64748b", marginTop: "0.15rem" }}>
+                            Requested on {new Date(req.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        )}
+                      </p>
+
+                      {isAccepted && (
+                        <p className="req-card-hint-loaned">
+                          📦 <strong>Item on loan:</strong> Coordinate return with {req.borrowerName}. Once you have your item back, click <strong>"Mark as Returned"</strong> below to make it available again in the catalog.
+                        </p>
+                      )}
+
+                      {isReturned && (
+                        <p className="req-card-hint-accepted">
+                          ✓ <strong>Completed:</strong> This item was marked as returned and is now available in the community catalog.
+                        </p>
+                      )}
+
+                      <div className="req-card-actions">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => handleOpenChatForRequest(req)}
+                          title="Chat with requester"
+                        >
+                          💬 Chat with Borrower
+                        </button>
+
+                        {isPending && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-success"
+                              disabled={isProcessing}
+                              onClick={() => handleApproveBorrow(req.id)}
+                            >
+                              {isProcessing ? "Updating..." : "✅ Approve Request"}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary"
+                              style={{ color: "#dc2626", borderColor: "#fca5a5" }}
+                              disabled={isProcessing}
+                              onClick={() => handleDeclineBorrow(req.id)}
+                            >
+                              {isProcessing ? "Updating..." : "✕ Decline"}
+                            </button>
+                          </>
+                        )}
+
+                        {isAccepted && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            disabled={isProcessing}
+                            onClick={() => handleMarkReturned(req.id)}
+                          >
+                            {isProcessing ? "Updating..." : "🔄 Mark as Returned"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── My Borrowed Items & Requests Panel ────────────────── */}
+      {activeTab === "outgoing" && (
+        <section className="ud-panel requests-panel fade-in">
+          <div className="catalog-header">
+            <div>
+              <h2>📤 My Borrowed Items &amp; Requests</h2>
+              <p className="catalog-subtitle">
+                Items you have requested to borrow from other campus students.
+              </p>
+            </div>
+          </div>
+
+          {outgoingRequests.length === 0 ? (
+            <div className="catalog-state">
+              <span className="catalog-empty-icon" aria-hidden="true">🎒</span>
+              <p className="catalog-empty-title">No borrow requests made yet</p>
+              <p className="catalog-empty-sub">
+                Explore the catalog and request items you need for classes, projects, or hobbies.
+              </p>
               <button
                 type="button"
-                className="btn btn-sm btn-outline-secondary"
+                className="btn btn-sm btn-primary"
                 style={{ marginTop: "0.75rem" }}
-                onClick={() => { setSearch(""); setActiveCategory("All"); }}
+                onClick={() => setActiveTab("catalog")}
               >
-                Clear filters
+                Browse Catalog
               </button>
-            )}
-          </div>
-        )}
+            </div>
+          ) : (
+            <div className="requests-cards-list">
+              {outgoingRequests.map((req) => {
+                const isPending = req.status === "pending";
+                const isAccepted = req.status === "accepted";
+                const isReturned = req.status === "returned";
+                const isRejected = req.status === "rejected";
 
-        {/* Item grid */}
-        {!dataLoading && filteredItems.length > 0 && (
-          <div className="borrow-grid">
-            {filteredItems.map((item) => {
-              const isOwn = item.owner_id === user?.id;
-              return (
-                <article className="borrow-card card-lift" key={item.id}>
-                  <div className="borrow-card-img-wrap">
-                    <img
-                      className="borrow-card-img"
-                      src={item.image}
-                      alt={item.title}
-                    />
-                    {item.category && (
-                      <span className="borrow-card-cat">{item.category}</span>
+                return (
+                  <article className="borrow-request-card" key={req.id}>
+                    {req.listing?.image && (
+                      <img
+                        className="req-card-img"
+                        src={req.listing.image}
+                        alt={req.itemTitle || "Item"}
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
                     )}
+                    <div className="req-card-content">
+                      <div className="req-card-header">
+                        <h3 className="req-card-title">{req.itemTitle || req.listing?.title || "Item"}</h3>
+                        <span className={`status-pill status-${req.status}`}>
+                          {isPending && "⏳ Awaiting Owner Approval"}
+                          {isAccepted && "🎉 Approved! Ready for Pickup"}
+                          {isReturned && "✅ Returned"}
+                          {isRejected && "❌ Declined"}
+                        </span>
+                      </div>
+
+                      <p className="req-card-borrower">
+                        Owner: <strong>{req.ownerName}</strong> ({req.ownerEmail})
+                      </p>
+
+                      {isPending && (
+                        <p className="req-card-hint-loaned">
+                          ⏳ Waiting for {req.ownerName} to approve your request. Chat with them to arrange pickup!
+                        </p>
+                      )}
+
+                      {isAccepted && (
+                        <p className="req-card-hint-accepted">
+                          🎉 {req.ownerName} approved your request! Coordinate pickup and remember to return on time.
+                        </p>
+                      )}
+
+                      <div className="req-card-actions">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          onClick={() => handleOpenChatForRequest(req)}
+                        >
+                          💬 Chat with Owner
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── My Posted Items Panel ─────────────────────────────── */}
+      {activeTab === "myListings" && (
+        <section className="ud-panel listings-panel fade-in">
+          <div className="catalog-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
+            <div>
+              <h2>🏷️ My Posted Items</h2>
+              <p className="catalog-subtitle">
+                Manage the items you've shared with the campus community.
+              </p>
+            </div>
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={() => setShowPost(true)}
+            >
+              + Post New Item
+            </button>
+          </div>
+
+          {myListings.length === 0 ? (
+            <div className="catalog-state">
+              <span className="catalog-empty-icon" aria-hidden="true">📦</span>
+              <p className="catalog-empty-title">You haven't posted any items yet</p>
+              <p className="catalog-empty-sub">
+                Help fellow students by sharing gadgets, textbooks, lab equipment, or tools.
+              </p>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                style={{ marginTop: "0.75rem" }}
+                onClick={() => setShowPost(true)}
+              >
+                + Post Your First Item
+              </button>
+            </div>
+          ) : (
+            <div className="borrow-grid">
+              {myListings.map((item) => (
+                <article className="borrow-card" key={item.id}>
+                  <div className="borrow-card-img-wrap">
+                    <img className="borrow-card-img" src={item.image} alt={item.title} />
+                    {item.category && <span className="borrow-card-cat">{item.category}</span>}
                   </div>
                   <div className="borrow-card-body">
                     <h3 className="borrow-card-title">{item.title}</h3>
                     <p className="borrow-card-desc">{item.description}</p>
-                    <p className="borrow-card-owner">By {item.ownerName}</p>
+                    <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
+                      <span className={`status-pill status-${item.status === "approved" ? "accepted" : "pending"}`}>
+                        {item.status === "approved" ? "✓ Admin Approved" : "⏳ Pending Review"}
+                      </span>
+                      <span className={`status-pill status-${item.available ? "returned" : "declined"}`}>
+                        {item.available ? "🟢 Available" : "🟠 Currently Borrowed"}
+                      </span>
+                    </div>
                   </div>
                   <div className="borrow-card-footer">
-                    <span className="borrow-card-duration">
-                      Up to <strong>{item.duration} days</strong>
-                    </span>
-                    {isOwn ? (
-                      <span className="borrow-card-own-badge">Your item</span>
-                    ) : (
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={() => handleBorrow(item)}
-                      >
-                        Request &amp; chat
-                      </button>
-                    )}
+                    <span className="borrow-card-duration">Max <strong>{item.duration} days</strong></span>
                   </div>
                 </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── Chat panel ───────────────────────────────────────── */}
       {chat && (
